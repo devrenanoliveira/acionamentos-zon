@@ -3,59 +3,57 @@ atualizar_dashboard.py
 ======================
 Script de atualização do Dashboard de Acionamentos.
 
-Fontes de dados (Google Sheets publicado):
-  - Aba "Analitico"  → dados individuais por cliente (66k+ linhas)
-  - Aba "Volume"     → volume diário por canal (digital + telefônico)
-  - Aba "Motivos"    → resultado das ligações telefônicas
+Fontes de dados (CSVs locais no repositório):
+  source/
+    2026-07/
+      Carteira.csv        # Dados da carteira (um cliente por linha)
+      Acionamentos.csv    # Log de acionamentos (um contato por linha)
+    2026-08/
+      Carteira.csv
+      Acionamentos.csv
+    ...
 
-Como publicar o Google Sheets como CSV:
-  1. Abra o arquivo → Arquivo → Compartilhar → Publicar na web
-  2. Escolha a aba → formato CSV → Publicar
-  3. Copie o link e cole abaixo nas variáveis SHEET_*_URL
+Colunas esperadas em Carteira.csv:
+  CPF/CNPJ, Nome, Tipo Pessoa, Agrupador, Dias, Saldo Atual, UF, Cidade
+  [Assessoria]  ← opcional; obrigatória a partir de ago/2026
 
-Colunas esperadas em cada aba:
-  Analitico: CPF, Nome, Tipo, Dias, Saldo, Agrupador, UF, Cidade, QtdAcion, UltimoStatus, StatusFrequente
-  Volume:    Dia, Digital, Telefônico, FDS
-  Motivos:   Resultado, Quantidade, Cor
+Colunas esperadas em Acionamentos.csv:
+  Ação, CPF/CNPJ, Data, Motivo Contato, Tipo Motivo
+  [Assessoria]  ← opcional; obrigatória a partir de ago/2026
 
-Como executar manualmente:
-  pip install pandas requests PyGithub
-  export GITHUB_TOKEN=seu_token
-  export REPO_NAME=seu_usuario/dashboard-acionamentos
-  python atualizar_dashboard.py
+Ação: "Ação Digital" → digital  |  "CONTATO TELEFÔNICO" → telefônico
 
-Para teste local (sem subir para o GitHub):
+Como executar localmente (teste antes do deploy):
+  export MES_ID="2026-07"
+  export MES_LABEL="Julho 2026"
+  export MES_PERIODO="01–27 jul/2026"
   python atualizar_dashboard.py --local
+
+Para subir ao GitHub automaticamente (via Actions), basta fazer commit
+dos CSVs em source/YYYY-MM/ e disparar o workflow.
 """
 
 import os
 import sys
 import json
-import requests
 import pandas as pd
-from datetime import datetime, timezone, timedelta
-from io import StringIO
+from datetime import datetime, timezone, timedelta, date
 
 # ═══════════════════════════════════════════════════════════════
-# CONFIGURAÇÃO — edite estas variáveis
+# CONFIGURAÇÃO
 # ═══════════════════════════════════════════════════════════════
 
-# Links de publicação do Google Sheets (CSV)
-SHEET_ANALITICO_URL = os.environ.get("SHEET_ANALITICO_URL", "")
-SHEET_VOLUME_URL    = os.environ.get("SHEET_VOLUME_URL", "")
-SHEET_MOTIVOS_URL   = os.environ.get("SHEET_MOTIVOS_URL", "")
-
-# Período do mês (preencha manualmente ou derive do dado)
 MES_LABEL   = os.environ.get("MES_LABEL", "")    # ex: "Agosto 2026"
 MES_PERIODO = os.environ.get("MES_PERIODO", "")   # ex: "01–31 ago/2026"
-MES_ID      = os.environ.get("MES_ID", "")        # ex: "2026-08"  (YYYY-MM)
+MES_ID      = os.environ.get("MES_ID", "")        # ex: "2026-08"
 
-# Credenciais GitHub (injetadas automaticamente pelo Actions via GITHUB_TOKEN)
 GITHUB_TOKEN = os.environ.get("GITHUB_TOKEN", "")
-REPO_NAME    = os.environ.get("GITHUB_REPOSITORY", "")  # ex: "usuario/dashboard-acionamentos"
+REPO_NAME    = os.environ.get("GITHUB_REPOSITORY", "")
 
-# Fuso horário Brasília
 BRT = timezone(timedelta(hours=-3))
+
+# Pasta raiz dos arquivos-fonte (relativa ao repositório)
+SOURCE_ROOT = "source"
 
 # ═══════════════════════════════════════════════════════════════
 # FAIXAS
@@ -93,17 +91,59 @@ def faixa_valor(saldo):
 
 MOTIVOS_COLORS = {
     "Não Localizado":    "#DC2626",
+    "Nao Localizado":    "#DC2626",
+    "Não localizado":    "#DC2626",
     "Atendeu/desligou":  "#EA580C",
+    "Atendeu e desligou":"#EA580C",
     "Não atendeu":       "#D97706",
+    "Nao atendeu":       "#D97706",
     "Promessa de pgto":  "#059669",
+    "Promessa de Pagamento": "#059669",
     "Recado":            "#7C3AED",
     "Sem cond. fin.":    "#64748B",
+    "Sem Condições Financeiras": "#64748B",
     "Reagendado":        "#1D4ED8",
     "Sem int. pagar":    "#991B1B",
+    "Sem Interesse em Pagar": "#991B1B",
     "Desempregado":      "#D97706",
     "Alega Pagamento":   "#059669",
     "Desconhece Dívida": "#9A3412",
+    "Desconhece Divida": "#9A3412",
     "Falecido":          "#94A3B8",
+    "Ação Digital":      "#1D4ED8",
+    "Acao Digital":      "#1D4ED8",
+}
+
+# Mapeamento de texto de motivo/situação → código de 2 letras
+MOTIVO_PARA_CODIGO = {
+    "não localizado":             "NL",
+    "nao localizado":             "NL",
+    "não atendeu":                "NA",
+    "nao atendeu":                "NA",
+    "atendeu/desligou":           "AD",
+    "atendeu e desligou":         "AD",
+    "cliente atendeu e desligou": "AD",
+    "promessa de pagamento":      "PP",
+    "promessa de pgto":           "PP",
+    "recado":                     "RC",
+    "sem condições financeiras":  "SF",
+    "sem cond. fin.":             "SF",
+    "sem condicoes financeiras":  "SF",
+    "reagendado":                 "RE",
+    "sem interesse em pagar":     "SI",
+    "sem int. pagar":             "SI",
+    "alega pagamento":            "AP",
+    "desempregado":               "DE",
+    "desconhece dívida":          "DD",
+    "desconhece divida":          "DD",
+    "falecido":                   "FA",
+    "sms":                        "SM",
+    "whatsapp":                   "SM",
+    "envio de sms":               "SM",
+    "envio de sms/whatsapp":      "SM",
+    "ação digital":               "SM",
+    "acao digital":               "SM",
+    "digital":                    "SM",
 }
 
 STATUS_LABEL = {
@@ -125,120 +165,279 @@ STATUS_LABEL = {
 
 
 # ═══════════════════════════════════════════════════════════════
-# LEITURA DE DADOS
+# UTILIDADES
 # ═══════════════════════════════════════════════════════════════
 
 def limpar_valor_br(v):
-    """Converte 'R$ 1.234,56' → 1234.56"""
+    """Converte 'R$ 1.234,56' ou '1234.56' → 1234.56"""
     if pd.isna(v): return 0.0
-    s = str(v).strip().replace("R$","").replace(" ","").replace(".","").replace(",",".")
+    s = str(v).strip().replace("R$","").replace(" ","")
+    # Formato brasileiro: 1.234,56
+    if "," in s and "." in s:
+        s = s.replace(".","").replace(",",".")
+    elif "," in s:
+        s = s.replace(",",".")
     try:
         return float(s)
     except:
         return 0.0
 
-def ler_csv_url(url, nome):
-    print(f"  Lendo {nome}...")
-    resp = requests.get(url, timeout=60)
-    resp.raise_for_status()
-    df = pd.read_csv(StringIO(resp.text))
-    print(f"    {len(df)} linhas, colunas: {list(df.columns)}")
+def normalizar_cpf(v):
+    if pd.isna(v): return ""
+    return str(v).strip().replace(".","").replace("-","").replace("/","").strip()
+
+def normalizar_cols(df):
+    """Normaliza nomes de colunas: lowercase + sem acentos básicos."""
+    df.columns = (
+        df.columns.str.strip()
+        .str.lower()
+        .str.replace(" ","_")
+        .str.replace("/","_")
+        .str.replace("ç","c")
+        .str.replace("ã","a")
+        .str.replace("â","a")
+        .str.replace("á","a")
+        .str.replace("à","a")
+        .str.replace("é","e")
+        .str.replace("ê","e")
+        .str.replace("í","i")
+        .str.replace("ó","o")
+        .str.replace("ô","o")
+        .str.replace("ú","u")
+    )
     return df
 
+def motivo_para_codigo(texto):
+    """Converte texto de motivo para código de 2 letras."""
+    if pd.isna(texto) or str(texto).strip() in ("", "-"): return "-"
+    t = str(texto).strip().lower()
+    # Verificar se já é um código de 2 letras
+    t2 = str(texto).strip().upper()
+    if t2 in STATUS_LABEL:
+        return t2
+    return MOTIVO_PARA_CODIGO.get(t, t2[:2] if len(t2) >= 2 else "-")
 
-def ler_analitico(url):
-    df = ler_csv_url(url, "Analitico")
-    # Colunas esperadas (ajuste os nomes conforme seu sheet):
-    # CPF, Nome, Tipo, Dias, Saldo, Agrupador, UF, Cidade, QtdAcion, UltimoStatus, StatusFrequente
 
-    col_map = {
-        # nome no sheet    →  nome padrão
-        "cpf":              "CPF",
-        "cnpj":             "CPF",
-        "cpf/cnpj":         "CPF",
-        "nome":             "Nome",
-        "tipo":             "Tipo",
-        "dias":             "Dias",
-        "dias_atraso":      "Dias",
-        "diasatraso":       "Dias",
-        "saldo":            "Saldo",
-        "saldo_contabil":   "Saldo",
-        "saldo_atraso":     "Saldo",
-        "agrupador":        "Agrupador",
-        "uf":               "UF",
-        "cidade":           "Cidade",
-        "qtd_acion":        "QtdAcion",
-        "qtdacion":         "QtdAcion",
-        "quantidade_acionamentos": "QtdAcion",
-        "ultimo_status":    "UltimoStatus",
-        "ultimostatus":     "UltimoStatus",
-        "status_frequente": "StatusFrequente",
-        "statusfrequente":  "StatusFrequente",
+# ═══════════════════════════════════════════════════════════════
+# LEITURA DOS CSVs
+# ═══════════════════════════════════════════════════════════════
+
+def ler_carteira(pasta):
+    """Lê Carteira.csv e retorna DataFrame normalizado."""
+    caminho = os.path.join(pasta, "Carteira.csv")
+    print(f"  Lendo {caminho}...")
+    df = pd.read_csv(caminho, low_memory=False)
+    df = normalizar_cols(df)
+    print(f"    {len(df):,} linhas · colunas: {list(df.columns)}")
+
+    # Mapeamento flexível de colunas
+    alias = {
+        "cpf_cnpj": "cpf", "cnpj": "cpf",
+        "nome": "nome",
+        "tipo_pessoa": "tipo",
+        "agrupador": "agrupador",
+        "dias": "dias",
+        "dias_atraso": "dias",
+        "maior_atraso": "dias",
+        "saldo_atual": "saldo",
+        "saldo_contabil": "saldo",
+        "saldo_em_atraso": "saldo",
+        "saldo_total_em_atraso": "saldo",
+        "uf": "uf",
+        "cidade": "cidade",
+        "assessoria": "assessoria",
     }
-    df.columns = [col_map.get(c.lower().replace(" ","_"), c) for c in df.columns]
+    df = df.rename(columns={c: alias[c] for c in df.columns if c in alias})
+
+    # Garantir colunas mínimas
+    for col, default in [("tipo","F"),("agrupador",""),("uf",""),("cidade",""),("assessoria","Geral")]:
+        if col not in df.columns:
+            df[col] = default
 
     # Limpeza
-    df["CPF"]      = df["CPF"].astype(str).str.strip().str.replace(r"[.\-/]","",regex=True).str.zfill(11)
-    df["Tipo"]     = df.get("Tipo", pd.Series(["F"]*len(df))).fillna("F").astype(str).str.upper().str.strip()
-    df["Dias"]     = pd.to_numeric(df["Dias"], errors="coerce").fillna(0).astype(int)
-    df["Saldo"]    = df["Saldo"].apply(limpar_valor_br)
-    df["Agrupador"]= df.get("Agrupador", pd.Series([""] * len(df))).fillna("").astype(str).str.strip()
-    df["UF"]       = df.get("UF", pd.Series([""] * len(df))).fillna("").astype(str).str.upper().str.strip()
-    df["Cidade"]   = df.get("Cidade", pd.Series([""] * len(df))).fillna("").astype(str).str.strip().str.upper()
-    df["QtdAcion"] = pd.to_numeric(df.get("QtdAcion", pd.Series([0]*len(df))), errors="coerce").fillna(0).astype(int)
-    df["UltimoStatus"]    = df.get("UltimoStatus", pd.Series(["-"]*len(df))).fillna("-").astype(str).str.strip()
-    df["StatusFrequente"] = df.get("StatusFrequente", pd.Series(["-"]*len(df))).fillna("-").astype(str).str.strip()
+    df["cpf"]       = df["cpf"].apply(normalizar_cpf).str.zfill(11)
+    df["nome"]      = df["nome"].fillna("").astype(str).str.strip().str.upper()
+    df["tipo"]      = df["tipo"].fillna("F").astype(str).str.strip().str.upper()
+    # Normalizar tipo: "FÍSICA", "FISICA" → F; "JURÍDICA", "JURIDICA" → J
+    df["tipo"]      = df["tipo"].map(lambda t: "J" if t.startswith("J") else "F")
+    df["agrupador"] = df["agrupador"].fillna("").astype(str).str.strip()
+    df["uf"]        = df["uf"].fillna("").astype(str).str.upper().str.strip()
+    df["cidade"]    = df["cidade"].fillna("").astype(str).str.upper().str.strip()
+    df["assessoria"]= df["assessoria"].fillna("Geral").astype(str).str.strip()
+    df["saldo"]     = df["saldo"].apply(limpar_valor_br) if "saldo" in df.columns else 0.0
+    df["dias"]      = pd.to_numeric(df.get("dias", 0), errors="coerce").fillna(0).astype(int)
 
-    # Derivados
-    df["fa"] = df["Dias"].apply(faixa_atraso)
-    df["fv"] = df["Saldo"].apply(faixa_valor)
-
-    # Índices de agrupador e UF
-    ag_list = sorted(df["Agrupador"].unique().tolist())
-    uf_list = sorted(df["UF"].unique().tolist())
-    ag_map  = {a:i for i,a in enumerate(ag_list)}
-    uf_map  = {u:i for i,u in enumerate(uf_list)}
-    df["ag_idx"] = df["Agrupador"].map(ag_map)
-    df["uf_idx"] = df["UF"].map(uf_map)
-
-    return df, ag_list, uf_list
-
-
-def ler_volume(url):
-    df = ler_csv_url(url, "Volume")
-    col_map = {
-        "dia":         "Dia",
-        "data":        "Dia",
-        "digital":     "Digital",
-        "tel":         "Tel",
-        "telefonico":  "Tel",
-        "telefônico":  "Tel",
-        "fds":         "FDS",
-        "final_semana":"FDS",
-        "fim_semana":  "FDS",
-    }
-    df.columns = [col_map.get(c.lower().strip().replace(" ","_").replace("ô","o"), c) for c in df.columns]
-    df["Digital"] = pd.to_numeric(df.get("Digital",0), errors="coerce").fillna(0).astype(int)
-    df["Tel"]     = pd.to_numeric(df.get("Tel",0), errors="coerce").fillna(0).astype(int)
-    df["FDS"]     = df.get("FDS", False).astype(bool)
     return df
 
 
-def ler_motivos(url):
-    df = ler_csv_url(url, "Motivos")
-    col_map = {
-        "resultado":  "Resultado",
-        "motivo":     "Resultado",
-        "quantidade": "Quantidade",
-        "qtd":        "Quantidade",
-        "cor":        "Cor",
-        "color":      "Cor",
+def ler_acionamentos(pasta):
+    """Lê Acionamentos.csv e retorna DataFrame normalizado."""
+    caminho = os.path.join(pasta, "Acionamentos.csv")
+    print(f"  Lendo {caminho}...")
+    df = pd.read_csv(caminho, low_memory=False)
+    df = normalizar_cols(df)
+    print(f"    {len(df):,} linhas · colunas: {list(df.columns)}")
+
+    alias = {
+        "cpf_cnpj": "cpf", "cnpj": "cpf",
+        "acao": "acao", "tipo_acao": "acao",
+        "data": "data",
+        "horario": "horario",
+        "motivo_contato": "motivo_contato",
+        "tipo_motivo": "tipo_motivo",
+        "situacao": "situacao",
+        "assessoria": "assessoria",
+        "responsavel": "responsavel",
+        "cliente": "cliente",
     }
-    df.columns = [col_map.get(c.lower().strip(), c) for c in df.columns]
-    df["Quantidade"] = pd.to_numeric(df["Quantidade"], errors="coerce").fillna(0).astype(int)
-    if "Cor" not in df.columns:
-        df["Cor"] = df["Resultado"].map(MOTIVOS_COLORS).fillna("#94A3B8")
+    df = df.rename(columns={c: alias[c] for c in df.columns if c in alias})
+
+    for col, default in [("acao",""),("data",""),("horario",""),
+                          ("motivo_contato",""),("tipo_motivo",""),
+                          ("situacao",""),("assessoria","Geral")]:
+        if col not in df.columns:
+            df[col] = default
+
+    df["cpf"]           = df["cpf"].apply(normalizar_cpf).str.zfill(11)
+    df["acao"]          = df["acao"].fillna("").astype(str).str.strip()
+    df["data"]          = df["data"].fillna("").astype(str).str.strip()
+    df["horario"]       = df["horario"].fillna("").astype(str).str.strip()
+    df["motivo_contato"]= df["motivo_contato"].fillna("").astype(str).str.strip()
+    df["tipo_motivo"]   = df["tipo_motivo"].fillna("").astype(str).str.strip()
+    df["assessoria"]    = df["assessoria"].fillna("Geral").astype(str).str.strip()
+
+    # Classificar ação
+    df["is_digital"] = df["acao"].str.contains("digital", case=False, na=False)
+    df["is_tel"]     = df["acao"].str.contains("tel", case=False, na=False) | \
+                       df["acao"].str.contains("contato", case=False, na=False)
+
     return df
+
+
+def mesclar_dados(df_carteira, df_acion):
+    """
+    Junta Carteira com Acionamentos para gerar o DataFrame de análise por cliente.
+    Calcula: QtdAcion, UltimoStatus, StatusFrequente para cada CPF.
+    """
+    # Quantidade de acionamentos por CPF
+    qtd = df_acion.groupby("cpf").size().rename("qtd_acion")
+
+    # Último status: ordenar por data+horario e pegar o último
+    df_sorted = df_acion.copy()
+    df_sorted["_ordem"] = df_sorted["data"].astype(str) + " " + df_sorted["horario"].astype(str)
+    df_sorted = df_sorted.sort_values("_ordem")
+
+    # Determinar campo de status: prioridade: motivo_contato > tipo_motivo > situacao
+    def get_status_field(row):
+        for field in ["motivo_contato", "tipo_motivo", "situacao"]:
+            val = row.get(field, "")
+            if val and str(val).strip() not in ("", "-", "nan"):
+                return str(val).strip()
+        return "-"
+
+    df_sorted["_status_raw"] = df_sorted.apply(get_status_field, axis=1)
+    df_sorted["_status_cod"] = df_sorted["_status_raw"].map(motivo_para_codigo)
+
+    # Digital acionamentos → status = SM
+    df_sorted.loc[df_sorted["is_digital"] & (df_sorted["_status_cod"] == "-"), "_status_cod"] = "SM"
+
+    ultimo = df_sorted.groupby("cpf")["_status_cod"].last()
+    frequente = df_sorted.groupby("cpf")["_status_cod"].agg(
+        lambda x: x.mode()[0] if len(x) > 0 else "-"
+    )
+
+    # Merge com carteira
+    df = df_carteira.copy()
+    df = df.join(qtd, on="cpf", how="left")
+    df = df.join(ultimo.rename("ultimo_status"), on="cpf", how="left")
+    df = df.join(frequente.rename("status_frequente"), on="cpf", how="left")
+
+    df["qtd_acion"]       = df["qtd_acion"].fillna(0).astype(int)
+    df["ultimo_status"]   = df["ultimo_status"].fillna("-").astype(str)
+    df["status_frequente"]= df["status_frequente"].fillna("-").astype(str)
+
+    # Índices derivados
+    df["fa"] = df["dias"].apply(faixa_atraso)
+    df["fv"] = df["saldo"].apply(faixa_valor)
+
+    ag_list = sorted(df["agrupador"].unique().tolist())
+    uf_list = sorted(df["uf"].unique().tolist())
+    as_list = sorted(df["assessoria"].unique().tolist())
+
+    ag_map = {a: i for i, a in enumerate(ag_list)}
+    uf_map = {u: i for i, u in enumerate(uf_list)}
+    as_map = {a: i for i, a in enumerate(as_list)}
+
+    df["ag_idx"] = df["agrupador"].map(ag_map)
+    df["uf_idx"] = df["uf"].map(uf_map)
+    df["as_idx"] = df["assessoria"].map(as_map)
+
+    return df, ag_list, uf_list, as_list
+
+
+def calcular_volume(df_acion):
+    """
+    Calcula volume diário de acionamentos por canal.
+    Retorna lista de {dia, digital, tel, fds}.
+    """
+    if df_acion["data"].empty or df_acion["data"].str.strip().eq("").all():
+        return []
+
+    # Tentar parsear a data (aceita DD/MM/YYYY ou YYYY-MM-DD)
+    def parse_data(s):
+        for fmt in ("%d/%m/%Y", "%Y-%m-%d", "%d-%m-%Y", "%d/%m/%y"):
+            try:
+                return datetime.strptime(str(s).strip(), fmt).date()
+            except:
+                pass
+        return None
+
+    df = df_acion.copy()
+    df["_data"] = df["data"].apply(parse_data)
+    df = df.dropna(subset=["_data"])
+
+    if df.empty:
+        return []
+
+    grouped = df.groupby("_data").agg(
+        digital=("is_digital", "sum"),
+        tel=("is_tel", "sum")
+    ).reset_index()
+    grouped = grouped.sort_values("_data")
+
+    vol = []
+    for _, row in grouped.iterrows():
+        d = row["_data"]
+        vol.append({
+            "dia": d.strftime("%d/%m"),
+            "digital": int(row["digital"]),
+            "tel": int(row["tel"]),
+            "fds": d.weekday() >= 5  # 5=sáb, 6=dom
+        })
+    return vol
+
+
+def calcular_motivos(df_acion):
+    """
+    Calcula distribuição dos motivos nos acionamentos telefônicos.
+    Usa tipo_motivo se disponível, senão motivo_contato.
+    Retorna lista de {name, value, color}.
+    """
+    df_tel = df_acion[df_acion["is_tel"]].copy()
+    if df_tel.empty:
+        return []
+
+    # Usar tipo_motivo se tiver valores, senão motivo_contato
+    col = "tipo_motivo" if df_tel["tipo_motivo"].str.strip().ne("").any() else "motivo_contato"
+    counts = df_tel[col].str.strip().value_counts()
+
+    motivos = []
+    for nome, qtd in counts.items():
+        if not nome or nome == "" or nome.lower() == "nan":
+            continue
+        cor = MOTIVOS_COLORS.get(nome, "#94A3B8")
+        motivos.append({"name": str(nome), "value": int(qtd), "color": cor})
+    return motivos
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -246,124 +445,136 @@ def ler_motivos(url):
 # ═══════════════════════════════════════════════════════════════
 
 def calcular_atraso(df):
-    """D_ATRASO: por faixa de atraso"""
     rows = []
     for i, label in enumerate(FA_LABELS):
-        sub = df[df["fa"] == i]
+        sub   = df[df["fa"] == i]
         total = len(sub)
-        acion = (sub["QtdAcion"] > 0).sum()
+        acion = int((sub["qtd_acion"] > 0).sum())
         nao   = total - acion
         pct   = round(acion / total * 100, 1) if total > 0 else 0.0
-        rows.append({"id":i,"label":label,"total":int(total),"acion":int(acion),"nao":int(nao),"pct":pct})
+        rows.append({"id":i,"label":label,"total":int(total),"acion":acion,"nao":int(nao),"pct":pct})
     return rows
 
 def calcular_valor(df):
-    """D_VALOR: por faixa de valor"""
     rows = []
     for i, label in enumerate(FV_LABELS):
-        sub = df[df["fv"] == i]
+        sub   = df[df["fv"] == i]
         total = len(sub)
         if total == 0: continue
-        acion = (sub["QtdAcion"] > 0).sum()
+        acion = int((sub["qtd_acion"] > 0).sum())
         nao   = total - acion
         pct   = round(acion / total * 100, 1)
-        rows.append({"id":i,"label":label,"total":int(total),"acion":int(acion),"nao":int(nao),"pct":pct})
+        rows.append({"id":i,"label":label,"total":int(total),"acion":acion,"nao":int(nao),"pct":pct})
     return rows
 
 def calcular_matrix(df):
-    """MATRIX[atraso_i][valor_j] = [nao, total]"""
     matrix = []
     for ai in range(len(FA_LABELS)):
         row = []
         for vi in range(len(FV_LABELS)):
             sub   = df[(df["fa"]==ai) & (df["fv"]==vi)]
             total = len(sub)
-            nao   = int((sub["QtdAcion"]==0).sum())
+            nao   = int((sub["qtd_acion"]==0).sum())
             row.append([nao, int(total)])
         matrix.append(row)
     return matrix
 
 def calcular_freq(df):
-    """D_FREQ: distribuição de quantidade de acionamentos"""
     buckets = [(0,"0","Sem contato"),(1,"1","1 contato"),(2,"2","2 contatos"),
                (3,"3","3 contatos"),(4,"4","4 contatos"),(5,"5","5 contatos"),(-1,"6+","6+ contatos")]
     rows = []
     for val, n, label in buckets:
-        if val == -1:
-            v = int((df["QtdAcion"]>=6).sum())
-        else:
-            v = int((df["QtdAcion"]==val).sum())
+        v = int((df["qtd_acion"]>=6).sum()) if val == -1 else int((df["qtd_acion"]==val).sum())
         rows.append({"n":n,"label":label,"v":v})
     return rows
+
+def agregar_metricas(df, df_acion):
+    """Agrega métricas para um subconjunto de dados (global ou por assessoria)."""
+    total   = len(df)
+    acionados    = int((df["qtd_acion"] > 0).sum())
+    sem_acion    = total - acionados
+    com_promessa = int(((df["ultimo_status"]=="PP") | (df["status_frequente"]=="PP")).sum())
+    vol     = calcular_volume(df_acion)
+    total_digital = sum(v["digital"] for v in vol)
+    total_tel     = sum(v["tel"] for v in vol)
+    total_acion   = total_digital + total_tel
+    atraso  = calcular_atraso(df)
+    max_nao = max((r["nao"] for r in atraso if r["nao"] > 0), default=1)
+    motivos = calcular_motivos(df_acion)
+
+    return {
+        "total_clientes":    total,
+        "acionados":         acionados,
+        "sem_acionamento":   sem_acion,
+        "com_promessa":      com_promessa,
+        "total_acionamentos": total_acion,
+        "total_tel":         total_tel,
+        "max_nao":           max_nao,
+        "atraso":            atraso,
+        "valor":             calcular_valor(df),
+        "matrix":            calcular_matrix(df),
+        "freq":              calcular_freq(df),
+        "motivos":           motivos,
+        "volume":            vol,
+    }
 
 
 # ═══════════════════════════════════════════════════════════════
 # MONTAR JSON FINAL
 # ═══════════════════════════════════════════════════════════════
 
-def montar_summary(df, df_volume, df_motivos, ag_list, uf_list, mes_id, mes_label, mes_periodo):
+def montar_summary(df, df_acion, ag_list, uf_list, as_list, mes_id, mes_label, mes_periodo):
     now = datetime.now(BRT).strftime("%d/%m/%Y %H:%M")
-    total = len(df)
-    acionados     = int((df["QtdAcion"]>0).sum())
-    sem_acion     = total - acionados
-    com_promessa  = int((df["UltimoStatus"]=="PP").sum() | (df["StatusFrequente"]=="PP").sum())
-    total_tel     = int(df_volume["Tel"].sum())
-    total_digital = int(df_volume["Digital"].sum())
-    total_acion   = total_tel + total_digital
-    max_nao_val   = max((row["nao"] for row in calcular_atraso(df) if row["nao"]>0), default=1)
 
-    volume_list = [
-        {"dia": str(row["Dia"]), "digital":int(row["Digital"]), "tel":int(row["Tel"]), "fds":bool(row["FDS"])}
-        for _, row in df_volume.iterrows()
-    ]
-    motivos_list = [
-        {"name": str(row["Resultado"]), "value":int(row["Quantidade"]),
-         "color": MOTIVOS_COLORS.get(str(row["Resultado"]).strip(), row.get("Cor","#94A3B8"))}
-        for _, row in df_motivos.iterrows()
-    ]
+    # Métricas globais
+    global_m = agregar_metricas(df, df_acion)
 
-    return {
-        "periodo":          mes_periodo,
-        "mes_label":        mes_label,
-        "total_clientes":   total,
-        "acionados":        acionados,
-        "sem_acionamento":  sem_acion,
-        "com_promessa":     com_promessa,
-        "total_acionamentos": total_acion,
-        "total_tel":        total_tel,
-        "max_nao":          max_nao_val,
-        "atraso":           calcular_atraso(df),
-        "valor":            calcular_valor(df),
-        "matrix":           calcular_matrix(df),
-        "freq":             calcular_freq(df),
-        "motivos":          motivos_list,
-        "volume":           volume_list,
-        "fa_labels":        FA_LABELS,
-        "fv_labels":        FV_LABELS,
-        "ag_list":          ag_list,
-        "uf_list":          uf_list,
-        "status_label":     STATUS_LABEL,
-        "atualizado_em":    now,
+    # Métricas por assessoria
+    by_assessoria = {}
+    if len(as_list) > 1:  # só se houver mais de uma assessoria
+        for i, ass in enumerate(as_list):
+            df_as     = df[df["assessoria"] == ass]
+            df_ac_as  = df_acion[df_acion["assessoria"] == ass]
+            by_assessoria[str(i)] = agregar_metricas(df_as, df_ac_as)
+
+    summary = {
+        "periodo":        mes_periodo,
+        "mes_label":      mes_label,
+        "fa_labels":      FA_LABELS,
+        "fv_labels":      FV_LABELS,
+        "ag_list":        ag_list,
+        "uf_list":        uf_list,
+        "assessoria_list": as_list,
+        "by_assessoria":  by_assessoria,
+        "status_label":   STATUS_LABEL,
+        "atualizado_em":  now,
     }
+    summary.update(global_m)  # inclui todas as métricas globais no nível raiz
+    return summary
+
 
 def montar_analitico(df):
-    """Converte DataFrame para array de arrays (mesma estrutura do original)."""
+    """
+    Converte DataFrame para array de arrays compactos.
+    Estrutura: [CPF, Nome, Tipo, Dias, fa_idx, Saldo, fv_idx, ag_idx, uf_idx, Cidade, QtdAcion, UltimoStatus, StatusFrequente, as_idx]
+    """
     records = []
     for _, r in df.iterrows():
         records.append([
-            str(r["CPF"]),
-            str(r["Nome"]),
-            str(r["Tipo"]),
-            int(r["Dias"]),
+            str(r["cpf"]),
+            str(r["nome"]),
+            str(r["tipo"]),
+            int(r["dias"]),
             int(r["fa"]),
-            round(float(r["Saldo"]),2),
+            round(float(r["saldo"]), 2),
             int(r["fv"]),
             int(r["ag_idx"]),
             int(r["uf_idx"]),
-            str(r["Cidade"]),
-            int(r["QtdAcion"]),
-            str(r["UltimoStatus"]),
-            str(r["StatusFrequente"]),
+            str(r["cidade"]),
+            int(r["qtd_acion"]),
+            str(r["ultimo_status"]),
+            str(r["status_frequente"]),
+            int(r["as_idx"]),
         ])
     return records
 
@@ -374,28 +585,38 @@ def montar_analitico(df):
 
 def salvar_local(summary, analitico, mes_id):
     os.makedirs("data", exist_ok=True)
-    with open(f"data/{mes_id}.json","w",encoding="utf-8") as f:
-        json.dump(summary, f, ensure_ascii=False)
-    print(f"  data/{mes_id}.json salvo ({len(json.dumps(summary, ensure_ascii=False))//1024} KB)")
 
-    with open(f"data/{mes_id}-analitico.json","w",encoding="utf-8") as f:
+    path_sum = f"data/{mes_id}.json"
+    path_an  = f"data/{mes_id}-analitico.json"
+
+    with open(path_sum, "w", encoding="utf-8") as f:
+        json.dump(summary, f, ensure_ascii=False)
+    print(f"  {path_sum} salvo ({os.path.getsize(path_sum)//1024} KB)")
+
+    with open(path_an, "w", encoding="utf-8") as f:
         json.dump(analitico, f, ensure_ascii=False)
-    print(f"  data/{mes_id}-analitico.json salvo ({len(json.dumps(analitico, ensure_ascii=False))//1024//1024} MB)")
+    print(f"  {path_an} salvo ({os.path.getsize(path_an)//1024//1024} MB aprox.)")
 
     # Atualizar index.json
     index_path = "data/index.json"
     if os.path.exists(index_path):
-        with open(index_path,"r",encoding="utf-8") as f:
+        with open(index_path, "r", encoding="utf-8") as f:
             idx = json.load(f)
     else:
-        idx = {"meses":[]}
-    # Verificar se o mês já está no índice
+        idx = {"meses": []}
+
     existing_ids = [m["id"] for m in idx["meses"]]
     if mes_id not in existing_ids:
-        idx["meses"].insert(0, {"id":mes_id,"label":summary["mes_label"],"periodo":summary["periodo"]})
-    with open(index_path,"w",encoding="utf-8") as f:
-        json.dump(idx, f, ensure_ascii=False, indent=2)
-    print(f"  data/index.json atualizado")
+        idx["meses"].insert(0, {
+            "id":     mes_id,
+            "label":  summary["mes_label"],
+            "periodo": summary["periodo"]
+        })
+        with open(index_path, "w", encoding="utf-8") as f:
+            json.dump(idx, f, ensure_ascii=False, indent=2)
+        print(f"  data/index.json atualizado")
+    else:
+        print(f"  data/index.json: mês {mes_id} já estava no índice")
 
 
 def salvar_github(summary, analitico, mes_id):
@@ -415,21 +636,28 @@ def salvar_github(summary, analitico, mes_id):
             repo.create_file(path, msg, content_bytes)
             print(f"  Criado: {path}")
 
-    summary_str  = json.dumps(summary, ensure_ascii=False)
+    summary_str   = json.dumps(summary, ensure_ascii=False)
     analitico_str = json.dumps(analitico, ensure_ascii=False)
-    upsert(f"data/{mes_id}.json",            summary_str,   f"Atualização {mes_id} — {now_str}")
-    upsert(f"data/{mes_id}-analitico.json",  analitico_str, f"Analítico {mes_id} — {now_str}")
 
-    # Atualizar index.json
+    upsert(f"data/{mes_id}.json",           summary_str,   f"Atualização {mes_id} — {now_str}")
+    upsert(f"data/{mes_id}-analitico.json", analitico_str, f"Analítico {mes_id} — {now_str}")
+
     try:
         idx_file = repo.get_contents("data/index.json")
         idx = json.loads(idx_file.decoded_content.decode("utf-8"))
     except:
-        idx = {"meses":[]}
+        idx = {"meses": []}
+
     existing_ids = [m["id"] for m in idx["meses"]]
     if mes_id not in existing_ids:
-        idx["meses"].insert(0, {"id":mes_id,"label":summary["mes_label"],"periodo":summary["periodo"]})
-        upsert("data/index.json", json.dumps(idx, ensure_ascii=False, indent=2), f"Índice: adiciona {mes_id}")
+        idx["meses"].insert(0, {
+            "id":     mes_id,
+            "label":  summary["mes_label"],
+            "periodo": summary["periodo"]
+        })
+        upsert("data/index.json",
+               json.dumps(idx, ensure_ascii=False, indent=2),
+               f"Índice: adiciona {mes_id}")
     print("  index.json OK")
 
 
@@ -441,12 +669,12 @@ def main():
     local_mode = "--local" in sys.argv
 
     print("=" * 60)
-    print(f"Dashboard Acionamentos — Atualização automática")
+    print("Dashboard Acionamentos — Atualização automática")
     print(f"Modo: {'LOCAL' if local_mode else 'GITHUB'}")
     print(f"Mês: {MES_ID} | {MES_LABEL}")
     print("=" * 60)
 
-    # Validações básicas
+    # Validações
     if not MES_ID:
         print("ERRO: variável MES_ID não definida (ex: 2026-08)")
         sys.exit(1)
@@ -456,31 +684,49 @@ def main():
     if not MES_PERIODO:
         print("ERRO: variável MES_PERIODO não definida (ex: 01–31 ago/2026)")
         sys.exit(1)
-    if not SHEET_ANALITICO_URL or not SHEET_VOLUME_URL or not SHEET_MOTIVOS_URL:
-        print("ERRO: variáveis SHEET_*_URL não definidas")
-        print("Configure os secrets no GitHub ou variáveis de ambiente locais.")
+
+    pasta = os.path.join(SOURCE_ROOT, MES_ID)
+    if not os.path.isdir(pasta):
+        print(f"ERRO: pasta '{pasta}' não encontrada.")
+        print(f"  Crie a pasta e coloque Carteira.csv e Acionamentos.csv dentro dela.")
         sys.exit(1)
+    for f in ["Carteira.csv", "Acionamentos.csv"]:
+        if not os.path.exists(os.path.join(pasta, f)):
+            print(f"ERRO: arquivo '{pasta}/{f}' não encontrado.")
+            sys.exit(1)
 
-    print("\n[1/4] Lendo planilhas do Google Sheets...")
-    df_an,   ag_list, uf_list = ler_analitico(SHEET_ANALITICO_URL)
-    df_vol   = ler_volume(SHEET_VOLUME_URL)
-    df_mot   = ler_motivos(SHEET_MOTIVOS_URL)
+    print(f"\n[1/4] Lendo CSVs de '{pasta}'...")
+    df_carteira = ler_carteira(pasta)
+    df_acion    = ler_acionamentos(pasta)
 
-    print(f"\n[2/4] Calculando agregações ({len(df_an):,} registros)...")
-    summary   = montar_summary(df_an, df_vol, df_mot, ag_list, uf_list, MES_ID, MES_LABEL, MES_PERIODO)
-    analitico = montar_analitico(df_an)
-    print(f"  Total clientes: {summary['total_clientes']:,}")
-    print(f"  Acionados: {summary['acionados']:,} ({summary['acionados']/summary['total_clientes']*100:.1f}%)")
+    print(f"\n[2/4] Mesclando e calculando agregações...")
+    df, ag_list, uf_list, as_list = mesclar_dados(df_carteira, df_acion)
+    print(f"  Clientes: {len(df):,}")
+    print(f"  Agrupadores: {len(ag_list)}")
+    print(f"  UFs: {len(uf_list)}")
+    print(f"  Assessorias: {as_list}")
+
+    summary   = montar_summary(df, df_acion, ag_list, uf_list, as_list, MES_ID, MES_LABEL, MES_PERIODO)
+    analitico = montar_analitico(df)
+
+    total = summary["total_clientes"]
+    acion = summary["acionados"]
+    print(f"  Total clientes: {total:,}")
+    print(f"  Acionados: {acion:,} ({acion/total*100:.1f}%)")
     print(f"  Sem acionamento: {summary['sem_acionamento']:,}")
+    if summary.get("by_assessoria"):
+        for i, ass in enumerate(as_list):
+            ba = summary["by_assessoria"].get(str(i), {})
+            print(f"  [{ass}] {ba.get('total_clientes',0):,} clientes, {ba.get('acionados',0):,} acionados")
 
-    # Validação mínima antes de commitar
-    if summary["total_clientes"] == 0:
+    # Validação mínima
+    if total == 0:
         print("ERRO: zero clientes — abortando para não publicar JSON vazio.")
         sys.exit(1)
-    if summary["acionados"] / summary["total_clientes"] < 0.5:
-        print("AVISO: menos de 50% dos clientes acionados — verifique os dados antes de continuar.")
+    if acion / total < 0.5:
+        print("AVISO: menos de 50% dos clientes acionados — verifique os dados.")
 
-    print("\n[3/4] Salvando arquivos...")
+    print(f"\n[3/4] Salvando arquivos...")
     if local_mode:
         salvar_local(summary, analitico, MES_ID)
     else:

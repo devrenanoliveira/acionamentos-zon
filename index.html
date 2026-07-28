@@ -14,11 +14,15 @@ header{margin-bottom:14px;display:flex;align-items:flex-start;justify-content:sp
 .header-left h1{font-size:17px;font-weight:700}
 .header-left p{font-size:12px;color:#64748B;margin-top:2px}
 .badge{display:inline-block;font-size:10px;font-weight:600;padding:2px 7px;border-radius:4px;background:#EFF6FF;color:#1D4ED8;border:1px solid #BFDBFE;margin-left:8px;vertical-align:middle}
-/* MÊS SELECTOR */
-.mes-selector{display:flex;align-items:center;gap:8px}
-.mes-selector label{font-size:11px;color:#64748B;font-weight:500;white-space:nowrap}
-#mes-select{padding:6px 10px;border:1px solid #E2E8F0;border-radius:7px;font-size:12px;color:#0F172A;background:#fff;cursor:pointer;outline:none}
-#mes-select:focus{border-color:#1D4ED8}
+/* HEADER CONTROLS */
+.header-controls{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.ctrl-group{display:flex;align-items:center;gap:6px}
+.ctrl-group label{font-size:11px;color:#64748B;font-weight:500;white-space:nowrap}
+.ctrl-select{padding:6px 10px;border:1px solid #E2E8F0;border-radius:7px;font-size:12px;color:#0F172A;background:#fff;cursor:pointer;outline:none}
+.ctrl-select:focus{border-color:#1D4ED8}
+/* Assessoria badge indicator */
+.as-badge{display:none;font-size:10px;font-weight:600;padding:2px 8px;border-radius:4px;background:#FFF7ED;color:#C2410C;border:1px solid #FED7AA;margin-left:4px}
+.as-badge.visible{display:inline-block}
 /* LOADING */
 .loading-overlay{position:fixed;inset:0;background:rgba(248,250,252,.85);display:flex;align-items:center;justify-content:center;z-index:9999;flex-direction:column;gap:12px}
 .loading-overlay.hidden{display:none}
@@ -83,6 +87,7 @@ header{margin-bottom:14px;display:flex;align-items:flex-start;justify-content:sp
   .matrix-controls{flex-direction:column;align-items:flex-start}
   .toggle-btn{padding:5px 9px;font-size:11px}
   .chart-wrap{touch-action:pan-y}
+  .header-controls{gap:6px}
 }
 /* MOTIVOS */
 .motivo-row{display:flex;align-items:center;gap:7px;margin-bottom:6px}
@@ -204,6 +209,7 @@ table.an-table tr:hover td{background:#F8FAFC}
 .an-nome{max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .an-ag{font-size:11px;color:#64748B;white-space:nowrap}
 .an-cid{font-size:11px;white-space:nowrap}
+.an-as{font-size:11px;color:#C2410C;white-space:nowrap;font-weight:500}
 /* ANALÍTICO LOADING */
 .an-loading{text-align:center;padding:40px;color:#64748B;font-size:13px}
 .an-loading .spinner{margin:0 auto 10px;width:28px;height:28px}
@@ -222,9 +228,18 @@ table.an-table tr:hover td{background:#F8FAFC}
     <h1>Acionamentos — Assessoria <span class="badge">Saldo Contábil / Total Atraso</span></h1>
     <p id="header-sub">Carregando…</p>
   </div>
-  <div class="mes-selector">
-    <label for="mes-select">Período:</label>
-    <select id="mes-select" onchange="loadMes(this.value)"></select>
+  <div class="header-controls">
+    <div class="ctrl-group">
+      <label for="as-select">Assessoria:</label>
+      <select id="as-select" class="ctrl-select" onchange="onAssessoriaChange()">
+        <option value="">Todas</option>
+      </select>
+      <span class="as-badge" id="as-badge"></span>
+    </div>
+    <div class="ctrl-group">
+      <label for="mes-select">Período:</label>
+      <select id="mes-select" class="ctrl-select" onchange="loadMes(this.value)"></select>
+    </div>
   </div>
 </header>
 
@@ -322,7 +337,7 @@ table.an-table tr:hover td{background:#F8FAFC}
   <div style="display:flex;gap:14px;margin-bottom:8px">
     <span style="display:flex;align-items:center;gap:5px;font-size:11px;color:#64748B"><span style="width:9px;height:9px;border-radius:2px;background:#1D4ED8;display:inline-block"></span>Digital</span>
     <span style="display:flex;align-items:center;gap:5px;font-size:11px;color:#64748B"><span style="width:9px;height:9px;border-radius:2px;background:#7C3AED;display:inline-block"></span>Telefônico</span>
-    <span style="font-size:11px;color:#64748B">· Domingos com volume zero</span>
+    <span style="font-size:11px;color:#64748B">· Fins de semana com volume reduzido</span>
   </div>
   <div class="chart-wrap" style="height:230px"><canvas id="chart-volume"></canvas></div>
   <div class="sec-label">Efetividade das ligações telefônicas</div>
@@ -345,14 +360,26 @@ table.an-table tr:hover td{background:#F8FAFC}
 // ═══════════════════════════════════════════
 // STATE
 // ═══════════════════════════════════════════
-let D = null; // dados do mês atual
-let ANALITICO = null;
+let D = null;           // dados completos do mês
+let ANALITICO = null;   // dados analíticos por cliente
+let currentAs = null;  // índice da assessoria selecionada (null = todas)
 let anFiltered = [], anPage = 1, anSortCol = -1, anSortDir = 1;
 let anInited = false, anLoading = false;
 let selAtraso = null, selValor = null;
 let mMode = 'nao', mSel = null;
 let charts = {};
 const AN_PAGE = 50;
+
+// ═══════════════════════════════════════════
+// DADOS ATIVOS (global ou por assessoria)
+// ═══════════════════════════════════════════
+function getAD(){
+  // Retorna os dados da assessoria selecionada ou os dados globais
+  if(currentAs !== null && D && D.by_assessoria && D.by_assessoria[String(currentAs)]){
+    return {...D, ...D.by_assessoria[String(currentAs)]};
+  }
+  return D;
+}
 
 // ═══════════════════════════════════════════
 // UTILS
@@ -396,6 +423,52 @@ document.querySelectorAll('.tab-btn').forEach(btn=>{
 });
 
 // ═══════════════════════════════════════════
+// ASSESSORIA
+// ═══════════════════════════════════════════
+function populateAssessoriaSelect(){
+  const sel = document.getElementById('as-select');
+  sel.innerHTML = '<option value="">Todas</option>';
+  if(!D || !D.assessoria_list || D.assessoria_list.length <= 1) {
+    sel.style.display = 'none';
+    sel.previousElementSibling.style.display = 'none'; // label
+    return;
+  }
+  sel.style.display = '';
+  sel.previousElementSibling.style.display = '';
+  D.assessoria_list.forEach((a,i)=>{
+    const opt = document.createElement('option');
+    opt.value = i;
+    opt.textContent = a;
+    sel.appendChild(opt);
+  });
+  // Restaurar seleção se ainda válida
+  if(currentAs !== null){
+    sel.value = String(currentAs);
+  }
+}
+
+function onAssessoriaChange(){
+  const v = document.getElementById('as-select').value;
+  currentAs = v === '' ? null : Number(v);
+  const badge = document.getElementById('as-badge');
+  if(currentAs !== null && D && D.assessoria_list){
+    badge.textContent = D.assessoria_list[currentAs];
+    badge.classList.add('visible');
+  } else {
+    badge.classList.remove('visible');
+  }
+  // Re-renderizar tudo com os dados da assessoria
+  Object.values(charts).forEach(c=>c.destroy());
+  charts = {};
+  selAtraso = null; selValor = null; mMode = 'nao'; mSel = null;
+  document.getElementById('btn-nao').classList.add('active');
+  document.getElementById('btn-pct').classList.remove('active');
+  renderAll();
+  // Re-filtrar analítico se estiver carregado
+  if(anInited) anFilter();
+}
+
+// ═══════════════════════════════════════════
 // CARREGAR MÊS
 // ═══════════════════════════════════════════
 async function loadIndex(){
@@ -410,7 +483,6 @@ async function loadIndex(){
       opt.textContent = m.label;
       sel.appendChild(opt);
     });
-    // Carrega o primeiro (mais recente)
     await loadMes(idx.meses[0].id);
   } catch(e) {
     console.error('Erro ao carregar índice:', e);
@@ -420,10 +492,9 @@ async function loadIndex(){
 
 async function loadMes(mesId){
   showLoading('Carregando dados de '+ mesId +'…');
-  // Reset analítico
+  currentAs = null;
   anInited = false; anLoading = false; ANALITICO = null;
   document.getElementById('an-content').innerHTML = `<div class="an-loading"><div class="spinner"></div>Clique na aba para carregar os dados analíticos…</div>`;
-  // Se aba analítico está ativa, vai para geral
   const activeTab = document.querySelector('.tab-btn.active');
   if(activeTab && activeTab.dataset.tab==='analitico'){
     document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
@@ -435,6 +506,7 @@ async function loadMes(mesId){
     const r = await fetch(`data/${mesId}.json?v=`+Date.now());
     if(!r.ok) throw new Error('HTTP '+r.status);
     D = await r.json();
+    populateAssessoriaSelect();
     renderAll();
     hideLoading();
   } catch(e){
@@ -473,11 +545,11 @@ function showError(msg){
 // RENDER ALL
 // ═══════════════════════════════════════════
 function renderAll(){
-  // Header
+  const ad = getAD();
+  const asLabel = currentAs !== null && D.assessoria_list ? ` · Assessoria: ${D.assessoria_list[currentAs]}` : '';
   document.getElementById('header-sub').textContent =
-    `Período: ${D.periodo}  ·  ${fmt(D.total_clientes)} clientes  ·  Atualizado em: ${D.atualizado_em}`;
+    `Período: ${D.periodo}  ·  ${fmt(ad.total_clientes)} clientes${asLabel}  ·  Atualizado em: ${D.atualizado_em}`;
 
-  // Destruir charts anteriores
   Object.values(charts).forEach(c=>c.destroy());
   charts = {};
 
@@ -486,32 +558,32 @@ function renderAll(){
   renderValor();
   renderMatrix();
   renderVolume();
-  selAtraso = null; selValor = null; mMode = 'nao'; mSel = null;
+  selAtraso = null; selValor = null; mSel = null;
 }
 
 // ══ GERAL ══
 function renderGeral(){
+  const ad = getAD();
   document.getElementById('kpi-geral').innerHTML =
-    kpiHtml('Total clientes',fmt(D.total_clientes),'','') +
-    kpiHtml('Acionados',fmt(D.acionados),'blue',`${((D.acionados/D.total_clientes)*100).toFixed(1)}% da carteira`) +
-    kpiHtml('Sem acionamento',fmt(D.sem_acionamento),'red',`${((D.sem_acionamento/D.total_clientes)*100).toFixed(1)}% da carteira`) +
-    kpiHtml('Com promessa',fmt(D.com_promessa),'green',`${((D.com_promessa/D.acionados)*100).toFixed(1)}% dos acionados`) +
-    kpiHtml('Acionamentos',fmt(D.total_acionamentos),'',D.periodo);
+    kpiHtml('Total clientes',fmt(ad.total_clientes),'','') +
+    kpiHtml('Acionados',fmt(ad.acionados),'blue',`${((ad.acionados/ad.total_clientes)*100).toFixed(1)}% da carteira`) +
+    kpiHtml('Sem acionamento',fmt(ad.sem_acionamento),'red',`${((ad.sem_acionamento/ad.total_clientes)*100).toFixed(1)}% da carteira`) +
+    kpiHtml('Com promessa',fmt(ad.com_promessa),'green',`${((ad.com_promessa/Math.max(ad.acionados,1))*100).toFixed(1)}% dos acionados`) +
+    kpiHtml('Acionamentos',fmt(ad.total_acionamentos),'',D.periodo);
 
-  // Donut cobertura
-  const pAcion = (D.acionados/D.total_clientes*100).toFixed(1);
-  const pSem   = (D.sem_acionamento/D.total_clientes*100).toFixed(1);
+  const pAcion = (ad.acionados/ad.total_clientes*100).toFixed(1);
+  const pSem   = (ad.sem_acionamento/ad.total_clientes*100).toFixed(1);
   document.getElementById('donut-legend').innerHTML = `
     <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">
       <span style="width:10px;height:10px;border-radius:2px;background:#1D4ED8;flex-shrink:0;display:inline-block"></span>
       <span style="font-size:12px;color:#64748B;flex:1">Acionados</span>
-      <span style="font-size:14px;font-weight:700;color:#1D4ED8">${fmt(D.acionados)}</span>
+      <span style="font-size:14px;font-weight:700;color:#1D4ED8">${fmt(ad.acionados)}</span>
       <span style="font-size:11px;color:#64748B;width:36px;text-align:right">${pAcion}%</span>
     </div>
     <div style="display:flex;align-items:center;gap:6px;margin-bottom:10px">
       <span style="width:10px;height:10px;border-radius:2px;background:#EF4444;flex-shrink:0;display:inline-block"></span>
       <span style="font-size:12px;color:#64748B;flex:1">Sem contato</span>
-      <span style="font-size:14px;font-weight:700;color:#DC2626">${fmt(D.sem_acionamento)}</span>
+      <span style="font-size:14px;font-weight:700;color:#DC2626">${fmt(ad.sem_acionamento)}</span>
       <span style="font-size:11px;color:#64748B;width:36px;text-align:right">${pSem}%</span>
     </div>
     <div style="font-size:11px;color:#64748B;line-height:1.7;border-top:1px solid #F1F5F9;padding-top:8px">
@@ -524,33 +596,34 @@ function renderGeral(){
 
   charts.donut = new Chart(document.getElementById('chart-donut'),{
     type:'doughnut',
-    data:{datasets:[{data:[D.acionados,D.sem_acionamento],backgroundColor:['#1D4ED8','#EF4444'],borderWidth:0}]},
+    data:{datasets:[{data:[ad.acionados,ad.sem_acionamento],backgroundColor:['#1D4ED8','#EF4444'],borderWidth:0}]},
     options:{responsive:true,maintainAspectRatio:false,cutout:'62%',plugins:{legend:{display:false},tooltip:{enabled:false}}}
   });
 
   charts.freq = new Chart(document.getElementById('chart-freq'),{
     type:'bar',
-    data:{labels:D.freq.map(d=>d.n),datasets:[{data:D.freq.map(d=>d.v),backgroundColor:['#DC2626','#F97316','#F59E0B','#7C3AED','#3B82F6','#1D4ED8','#059669'],borderRadius:3}]},
+    data:{labels:ad.freq.map(d=>d.n),datasets:[{data:ad.freq.map(d=>d.v),backgroundColor:['#DC2626','#F97316','#F59E0B','#7C3AED','#3B82F6','#1D4ED8','#059669'],borderRadius:3}]},
     options:{responsive:true,maintainAspectRatio:false,
       plugins:{legend:{display:false},tooltip:{...TT,callbacks:{label:ctx=>` ${fmt(ctx.parsed.y)} clientes`}}},
       scales:{x:{grid:{display:false},ticks:{color:MUTED,font:{size:10}}},y:{grid:{color:GRID},ticks:{color:MUTED,font:{size:9},callback:v=>v>=1000?`${(v/1000).toFixed(0)}k`:v}}}
     }
   });
 
+  const totalTel = ad.total_tel||1;
   charts.motivosDonut = new Chart(document.getElementById('chart-motivos-donut'),{
     type:'doughnut',
-    data:{datasets:[{data:D.motivos.map(d=>d.value),backgroundColor:D.motivos.map(d=>d.color),borderWidth:0}]},
+    data:{datasets:[{data:ad.motivos.map(d=>d.value),backgroundColor:ad.motivos.map(d=>d.color),borderWidth:0}]},
     options:{responsive:true,maintainAspectRatio:false,cutout:'50%',
       plugins:{legend:{display:false},tooltip:{...TT,callbacks:{
-        label:ctx=>` ${fmt(ctx.parsed)} (${((ctx.parsed/D.total_tel)*100).toFixed(1)}%)`
+        label:ctx=>` ${fmt(ctx.parsed)} (${((ctx.parsed/totalTel)*100).toFixed(1)}%)`
       }}}}
   });
 
   document.getElementById('motivos-label').textContent =
-    `Resultado dos acionamentos telefônicos (${fmt(D.total_tel)} ligações)`;
+    `Resultado dos acionamentos telefônicos (${fmt(ad.total_tel)} ligações)`;
 
-  document.getElementById('motivos-legend').innerHTML = D.motivos.map(m=>{
-    const p=(m.value/D.total_tel*100);
+  document.getElementById('motivos-legend').innerHTML = ad.motivos.map(m=>{
+    const p=(m.value/totalTel*100);
     return `<div class="motivo-row"><span style="width:9px;height:9px;border-radius:2px;background:${m.color};flex-shrink:0;display:inline-block;margin-right:4px"></span>
       <span class="motivo-name">${m.name}</span>
       <div class="motivo-bar-wrap"><div class="motivo-bar" style="width:${p}%;background:${m.color}"></div></div>
@@ -560,7 +633,8 @@ function renderGeral(){
 
 // ══ ATRASO ══
 function renderAtraso(){
-  const d = D.atraso;
+  const ad = getAD();
+  const d = ad.atraso;
   const piorIdx = d.reduce((mi,r,i)=>r.pct<d[mi].pct?i:mi,0);
   const pior = d[piorIdx];
   const naoTotal = d.reduce((s,r)=>s+r.nao,0);
@@ -572,15 +646,18 @@ function renderAtraso(){
     kpiHtml('Melhor cobertura','100,0%','green',`${faixas100} faixas com 100%`) +
     kpiHtml('Total descoberto',fmt(naoTotal),'amber','clientes não acionados');
 
-  const insight = document.getElementById('insight-atraso');
-  insight.innerHTML = `Cobertura excelente: <strong>${faixas100} faixas com 100%</strong> de cobertura. Os ${fmt(naoTotal)} clientes sem contato estão em: ${d.filter(r=>r.nao>0).map(r=>`${r.label} (${fmt(r.nao)})`).join(', ')}.`;
+  const d_com_nao = d.filter(r=>r.nao>0);
+  document.getElementById('insight-atraso').innerHTML = faixas100 > 0
+    ? `Cobertura excelente: <strong>${faixas100} faixas com 100%</strong> de cobertura. Os ${fmt(naoTotal)} clientes sem contato estão em: ${d_com_nao.map(r=>`${r.label} (${fmt(r.nao)})`).join(', ')}.`
+    : `${fmt(naoTotal)} clientes sem contato distribuídos em: ${d_com_nao.map(r=>`${r.label} (${fmt(r.nao)})`).join(', ')}.`;
 
   renderSegTable('seg-atraso',d,'clickAtraso',null);
 }
 
 // ══ VALOR ══
 function renderValor(){
-  const d = D.valor;
+  const ad = getAD();
+  const d = ad.valor;
   const piorIdx = d.reduce((mi,r,i)=>r.pct<d[mi].pct?i:mi,0);
   const pior = d[piorIdx];
   const melhorIdx = d.reduce((mi,r,i)=>r.pct>d[mi].pct?i:mi,0);
@@ -594,9 +671,9 @@ function renderValor(){
     kpiHtml('Menor faixa s/cont.',menor?fmt(menor.nao):'0','amber',menor?`clientes ${menor.label} restantes`:'');
 
   document.getElementById('insight-valor').innerHTML =
-    `Cobertura acima de 97% em todas as faixas. O menor índice é <strong>${pior.pct.toFixed(1)}%</strong> em ${pior.label} — ${fmt(pior.nao)} clientes sem contato.`;
+    `O menor índice é <strong>${pior.pct.toFixed(1)}%</strong> em ${pior.label} — ${fmt(pior.nao)} clientes sem contato.`;
   document.getElementById('insight-valor2').innerHTML =
-    `Apenas <strong>${fmt(D.sem_acionamento)} clientes</strong> na carteira inteira ainda sem nenhum acionamento.`;
+    `<strong>${fmt(ad.sem_acionamento)} clientes</strong> na carteira sem nenhum acionamento no período.`;
 
   renderSegTable('seg-valor',d,'clickValor',null);
 }
@@ -623,12 +700,13 @@ function renderSegTable(id, data, clickFn, selIdx){
 }
 
 function clickAtraso(i){
+  const ad = getAD();
   if(selAtraso===i){closeDrill('atraso');return;}
   selAtraso=i;
-  renderSegTable('seg-atraso',D.atraso,'clickAtraso',i);
-  const row=D.atraso[i];
-  const drill=D.matrix[i].map(([nao,tot],vi)=>({
-    label:D.val_labels?D.val_labels[vi]:D.fv_labels[vi],total:tot,acion:tot-nao,nao,
+  renderSegTable('seg-atraso',ad.atraso,'clickAtraso',i);
+  const row=ad.atraso[i];
+  const drill=ad.matrix[i].map(([nao,tot],vi)=>({
+    label:D.fv_labels[vi],total:tot,acion:tot-nao,nao,
     pct:tot>0?parseFloat(((tot-nao)/tot*100).toFixed(1)):null
   })).filter(d=>d.total>0);
   document.getElementById('drill-atraso-title').textContent=row.label+' — por faixa de valor';
@@ -642,13 +720,14 @@ function clickAtraso(i){
 }
 
 function clickValor(i){
+  const ad = getAD();
   if(selValor===i){closeDrill('valor');return;}
   selValor=i;
-  renderSegTable('seg-valor',D.valor,'clickValor',i);
-  const row=D.valor[i];
-  const drill=D.atraso.map((a,ai)=>({
-    label:a.label,total:D.matrix[ai][i][1],acion:D.matrix[ai][i][1]-D.matrix[ai][i][0],nao:D.matrix[ai][i][0],
-    pct:D.matrix[ai][i][1]>0?parseFloat(((D.matrix[ai][i][1]-D.matrix[ai][i][0])/D.matrix[ai][i][1]*100).toFixed(1)):null
+  renderSegTable('seg-valor',ad.valor,'clickValor',i);
+  const row=ad.valor[i];
+  const drill=ad.atraso.map((a,ai)=>({
+    label:a.label,total:ad.matrix[ai][i][1],acion:ad.matrix[ai][i][1]-ad.matrix[ai][i][0],nao:ad.matrix[ai][i][0],
+    pct:ad.matrix[ai][i][1]>0?parseFloat(((ad.matrix[ai][i][1]-ad.matrix[ai][i][0])/ad.matrix[ai][i][1]*100).toFixed(1)):null
   })).filter(d=>d.total>0);
   document.getElementById('drill-valor-title').textContent=row.label+' — por faixa de atraso';
   document.getElementById('drill-valor-kpis').innerHTML=
@@ -661,21 +740,23 @@ function clickValor(i){
 }
 
 function closeDrill(w){
-  if(w==='atraso'){selAtraso=null;document.getElementById('drill-atraso').classList.remove('open');renderSegTable('seg-atraso',D.atraso,'clickAtraso',null);}
-  if(w==='valor'){selValor=null;document.getElementById('drill-valor').classList.remove('open');renderSegTable('seg-valor',D.valor,'clickValor',null);}
+  const ad = getAD();
+  if(w==='atraso'){selAtraso=null;document.getElementById('drill-atraso').classList.remove('open');renderSegTable('seg-atraso',ad.atraso,'clickAtraso',null);}
+  if(w==='valor'){selValor=null;document.getElementById('drill-valor').classList.remove('open');renderSegTable('seg-valor',ad.valor,'clickValor',null);}
 }
 
 // ══ MATRIX ══
 function renderMatrix(){
+  const ad = getAD();
   const el=document.getElementById('matrix-table');
   const VAL_LABELS = D.fv_labels||[];
   let h='<thead><tr><th class="rh">Atraso \\ Valor</th>';
   VAL_LABELS.forEach(v=>{h+=`<th>${v}</th>`;});
   h+='</tr></thead><tbody>';
-  D.matrix.forEach((row,ai)=>{
-    h+=`<tr><td class="rh">${D.atraso[ai].label}</td>`;
+  ad.matrix.forEach((row,ai)=>{
+    h+=`<tr><td class="rh">${ad.atraso[ai]?ad.atraso[ai].label:D.fa_labels[ai]}</td>`;
     row.forEach(([nao,tot],vi)=>{
-      const s=cellStyle(nao,tot);
+      const s=cellStyle(nao,tot,ad.max_nao);
       const isSel=mSel&&mSel.ai===ai&&mSel.vi===vi;
       const disp=!s?'—':mMode==='nao'?fmt(nao):((tot-nao)/tot*100).toFixed(1)+'%';
       const ol=isSel?'outline:2px solid #1D4ED8;outline-offset:1px;':'';
@@ -686,17 +767,18 @@ function renderMatrix(){
   });
   h+='</tbody>';
   el.innerHTML=h;
+  const maxN = ad.max_nao||1;
   const items=mMode==='nao'
-    ?[['#DCFCE7','Zero'],['#FEF9C3','1–'+Math.floor(D.max_nao*0.33)],['#FED7AA',Math.floor(D.max_nao*0.33+1)+'–'+Math.floor(D.max_nao*0.67*2.5)],['#FECACA','...'],['#F87171',D.max_nao+'+']]
+    ?[['#DCFCE7','Zero'],['#FEF9C3','1–'+Math.floor(maxN*0.33)],['#FED7AA',Math.floor(maxN*0.33+1)+'–'+Math.floor(maxN*0.67*2.5)],['#FECACA','...'],['#F87171',maxN+'+']]
     :[['#DCFCE7','≥90%'],['#D1FAE5','70–89%'],['#FEF9C3','50–69%'],['#FECACA','25–49%'],['#F87171','<25%']];
   document.getElementById('matrix-legend').innerHTML=items.map(([bg,l])=>`<span><span class="sw" style="background:${bg}"></span>${l}</span>`).join('');
 }
 
-function cellStyle(nao,t){
+function cellStyle(nao,t,maxN){
   if(t===0) return null;
   if(mMode==='nao'){
     if(nao===0) return {bg:'#DCFCE7',co:'#166534'};
-    const r=nao/D.max_nao;
+    const r=nao/(maxN||1);
     if(r<0.05) return {bg:'#FEF9C3',co:'#854D0E'};
     if(r<0.20) return {bg:'#FED7AA',co:'#9A3412'};
     if(r<0.50) return {bg:'#FECACA',co:'#991B1B'};
@@ -720,13 +802,14 @@ function setMatrixMode(m){
 }
 
 function clickMatrix(ai,vi){
-  const [nao,tot]=D.matrix[ai][vi];
+  const ad = getAD();
+  const [nao,tot]=ad.matrix[ai][vi];
   if(tot===0) return;
   if(mSel&&mSel.ai===ai&&mSel.vi===vi){closeMatrixDetail();return;}
   mSel={ai,vi};
   renderMatrix();
   const acion=tot-nao,cov=(acion/tot*100);
-  document.getElementById('matrix-detail-title').textContent=D.atraso[ai].label+' × '+(D.fv_labels||[])[vi];
+  document.getElementById('matrix-detail-title').textContent=(ad.atraso[ai]?ad.atraso[ai].label:D.fa_labels[ai])+' × '+(D.fv_labels||[])[vi];
   document.getElementById('matrix-detail-kpis').innerHTML=
     kpiHtml('Total',fmt(tot))+kpiHtml('Acionados',fmt(acion),'blue')+
     kpiHtml('Sem contato',fmt(nao),'red')+kpiHtml('Cobertura',cov.toFixed(1)+'%',cov>=70?'green':'red');
@@ -741,21 +824,26 @@ function closeMatrixDetail(){mSel=null;renderMatrix();document.getElementById('m
 
 // ══ VOLUME ══
 function renderVolume(){
-  const vol=D.volume;
+  const ad = getAD();
+  const vol = ad.volume||[];
+  if(!vol.length){
+    document.getElementById('kpi-volume').innerHTML = kpiHtml('Sem dados','—','');
+    return;
+  }
   const totalDigital=vol.reduce((s,d)=>s+d.digital,0);
   const totalTel=vol.reduce((s,d)=>s+d.tel,0);
+  const totalAcion = ad.total_acionamentos || (totalDigital+totalTel);
   const pico=vol.reduce((a,d)=>d.digital+d.tel>a.digital+a.tel?d:a);
 
   document.getElementById('kpi-volume').innerHTML =
-    kpiHtml('Total período',fmt(D.total_acionamentos),'','acionamentos') +
-    kpiHtml('Digital',((totalDigital/D.total_acionamentos)*100).toFixed(1)+'%','blue',`${fmt(totalDigital)} acion.`) +
-    kpiHtml('Telefônico',((totalTel/D.total_acionamentos)*100).toFixed(1)+'%','purple',`${fmt(totalTel)} ligações`) +
+    kpiHtml('Total período',fmt(totalAcion),'','acionamentos') +
+    kpiHtml('Digital',(totalAcion>0?(totalDigital/totalAcion*100).toFixed(1):0)+'%','blue',`${fmt(totalDigital)} acion.`) +
+    kpiHtml('Telefônico',(totalAcion>0?(totalTel/totalAcion*100).toFixed(1):0)+'%','purple',`${fmt(totalTel)} ligações`) +
     kpiHtml('Pico diário',fmt(pico.digital+pico.tel),'green',`${pico.dia} — pico`) +
-    kpiHtml('Promessas',fmt(D.com_promessa),'amber',`${((D.com_promessa/D.total_tel)*100).toFixed(1)}% das ligações`);
+    kpiHtml('Promessas',fmt(ad.com_promessa),'amber',totalTel>0?`${((ad.com_promessa/totalTel)*100).toFixed(1)}% das ligações`:'');
 
   const GRID='#E2E8F0', MUTED='#94A3B8';
   const TT={backgroundColor:'#fff',borderColor:GRID,borderWidth:1,titleColor:'#0F172A',bodyColor:'#64748B',padding:10,cornerRadius:6};
-  Chart.defaults.font.family='system-ui,-apple-system,sans-serif';
 
   charts.volume = new Chart(document.getElementById('chart-volume'),{
     type:'bar',
@@ -776,20 +864,23 @@ function renderVolume(){
     }
   });
 
-  charts.motivosBar = new Chart(document.getElementById('chart-motivos-bar'),{
-    type:'bar',
-    data:{
-      labels:D.motivos.map(m=>m.name),
-      datasets:[{data:D.motivos.map(m=>m.value),backgroundColor:D.motivos.map(m=>m.color),borderRadius:4}]
-    },
-    options:{responsive:true,maintainAspectRatio:false,indexAxis:'y',
-      plugins:{legend:{display:false},tooltip:{...TT,callbacks:{
-        label:ctx=>` ${fmt(ctx.parsed.x)} (${((ctx.parsed.x/D.total_tel)*100).toFixed(1)}%)`
-      }}},
-      scales:{x:{grid:{color:GRID},ticks:{color:MUTED,font:{size:9}}},
-              y:{grid:{display:false},ticks:{color:'#0F172A',font:{size:11}}}}
-    }
-  });
+  const motivos = ad.motivos||[];
+  if(motivos.length){
+    charts.motivosBar = new Chart(document.getElementById('chart-motivos-bar'),{
+      type:'bar',
+      data:{
+        labels:motivos.map(m=>m.name),
+        datasets:[{data:motivos.map(m=>m.value),backgroundColor:motivos.map(m=>m.color),borderRadius:4}]
+      },
+      options:{responsive:true,maintainAspectRatio:false,indexAxis:'y',
+        plugins:{legend:{display:false},tooltip:{...TT,callbacks:{
+          label:ctx=>` ${fmt(ctx.parsed.x)} (${totalTel>0?((ctx.parsed.x/totalTel)*100).toFixed(1):0}%)`
+        }}},
+        scales:{x:{grid:{color:GRID},ticks:{color:MUTED,font:{size:9}}},
+                y:{grid:{display:false},ticks:{color:'#0F172A',font:{size:11}}}}
+      }
+    });
+  }
 }
 
 // ══ ANALÍTICO ══
@@ -798,10 +889,16 @@ function renderAnalitico(){
   const FV_LABELS = D.fv_labels||[];
   const AG_LIST   = D.ag_list||[];
   const UF_LIST   = D.uf_list||[];
+  const AS_LIST   = D.assessoria_list||[];
+
+  const asOpts = AS_LIST.length>1
+    ? `<option value="">Todas as assessorias</option>${AS_LIST.map((a,i)=>`<option value="${i}">${a}</option>`).join('')}`
+    : '';
 
   const html = `
     <div class="an-filters">
       <input type="text" id="an-search" class="an-search" placeholder="Buscar por CPF ou Nome…" oninput="anFilter()">
+      ${asOpts ? `<select id="an-as" class="an-select" onchange="anFilter()">${asOpts}</select>` : ''}
       <select id="an-fa" class="an-select" onchange="anFilter()"><option value="">Todas as faixas de atraso</option>${FA_LABELS.map((l,i)=>`<option value="${i}">${l}</option>`).join('')}</select>
       <select id="an-fv" class="an-select" onchange="anFilter()"><option value="">Todas as faixas de valor</option>${FV_LABELS.map((l,i)=>`<option value="${i}">${l}</option>`).join('')}</select>
       <select id="an-ag" class="an-select" onchange="anFilter()"><option value="">Todos os agrupadores</option>${AG_LIST.map((a,i)=>`<option value="${i}">${a}</option>`).join('')}</select>
@@ -829,7 +926,8 @@ function renderAnalitico(){
           <th class="s" id="th-saldo" onclick="anSort(5)">Saldo (R$)</th>
           <th>Faixa Valor</th><th>Agrupador</th><th>UF</th><th>Cidade</th>
           <th class="s" id="th-qtd" onclick="anSort(10)">Qtd. Acion.</th>
-          <th>Último Status</th><th>Status + Frequente</th>
+          <th>Último Status</th><th>Status + Freq.</th>
+          ${AS_LIST.length>1?'<th>Assessoria</th>':''}
         </tr></thead>
         <tbody id="an-tbody"></tbody>
       </table>
@@ -837,6 +935,13 @@ function renderAnalitico(){
     <div class="an-pagination" id="an-pagination"></div>`;
 
   document.getElementById('an-content').innerHTML = html;
+
+  // Pre-selecionar assessoria global se houver filtro ativo
+  if(currentAs !== null){
+    const asEl = document.getElementById('an-as');
+    if(asEl) asEl.value = String(currentAs);
+  }
+
   anFilter();
 }
 
@@ -844,6 +949,7 @@ function anFilter(){
   if(!ANALITICO) return;
   const FA_LABELS = D.fa_labels||[];
   const FV_LABELS = D.fv_labels||[];
+  const AS_LIST   = D.assessoria_list||[];
   const q   = (document.getElementById('an-search')?.value||'').toLowerCase();
   const fa  = document.getElementById('an-fa')?.value;
   const fv  = document.getElementById('an-fv')?.value;
@@ -851,6 +957,9 @@ function anFilter(){
   const uf  = document.getElementById('an-uf')?.value;
   const tp  = document.getElementById('an-tipo')?.value;
   const qtd = document.getElementById('an-qtd')?.value;
+  // Assessoria: prioridade ao filtro global, senão o select local
+  let asFilter = currentAs !== null ? String(currentAs) : (document.getElementById('an-as')?.value||'');
+
   anFiltered = ANALITICO.filter(r=>{
     if(q && !r[0].includes(q) && !r[1].toLowerCase().includes(q)) return false;
     if(fa!=='' && fa!==undefined && String(r[4])!==fa) return false;
@@ -862,6 +971,8 @@ function anFilter(){
     if(qtd==='1' && (r[10]<1||r[10]>3)) return false;
     if(qtd==='4' && (r[10]<4||r[10]>6)) return false;
     if(qtd==='7' && r[10]<7) return false;
+    // r[13] = as_idx (pode ser undefined em dados antigos)
+    if(asFilter!=='' && asFilter!==undefined && r[13]!==undefined && String(r[13])!==asFilter) return false;
     return true;
   });
   if(anSortCol>=0) anApplySort();
@@ -881,10 +992,17 @@ function anApplySort(){
   anFiltered=[...anFiltered].sort((a,b)=>(a[c]>b[c]?1:a[c]<b[c]?-1:0)*d);
 }
 function anClear(){
-  ['an-search','an-fa','an-fv','an-ag','an-uf','an-tipo','an-qtd'].forEach(id=>{
+  ['an-search','an-fa','an-fv','an-ag','an-uf','an-tipo','an-as'].forEach(id=>{
     const el=document.getElementById(id);
-    if(el) el.value=id==='an-qtd'?'0':'';
+    if(el) el.value='';
   });
+  const qtdEl=document.getElementById('an-qtd');
+  if(qtdEl) qtdEl.value='0';
+  // Respeitar filtro global
+  if(currentAs !== null){
+    const asEl=document.getElementById('an-as');
+    if(asEl) asEl.value=String(currentAs);
+  }
   anSortCol=-1;anSortDir=1;
   ['th-dias','th-saldo','th-qtd'].forEach(id=>{const e=document.getElementById(id);if(e)e.classList.remove('sort-asc','sort-desc');});
   anFilter();
@@ -895,6 +1013,8 @@ function anRender(){
   const FV_LABELS = D?D.fv_labels||[]:[];
   const AG_LIST   = D?D.ag_list||[]:[];
   const UF_LIST   = D?D.uf_list||[]:[];
+  const AS_LIST   = D?D.assessoria_list||[]:[];
+  const showAs    = AS_LIST.length > 1;
   const total=anFiltered.length;
   const pages=Math.max(1,Math.ceil(total/AN_PAGE));
   if(anPage>pages) anPage=pages;
@@ -919,6 +1039,7 @@ function anRender(){
     <td style="text-align:center;font-weight:700;font-variant-numeric:tabular-nums;${qtdColor(r[10])}">${r[10]}</td>
     <td>${stChip(r[11])}</td>
     <td>${stChip(r[12])}</td>
+    ${showAs?`<td class="an-as">${AS_LIST[r[13]]||''}</td>`:''}
   </tr>`).join('');
   const pg=document.getElementById('an-pagination');
   if(!pg) return;
@@ -945,16 +1066,21 @@ function anGo(p){anPage=p;anRender();document.getElementById('panel-analitico').
 function anExport(){
   if(typeof XLSX==='undefined'){alert('Carregando biblioteca Excel, tente novamente.');return;}
   if(!ANALITICO||!D) return;
-  const FA_LABELS=D.fa_labels||[],FV_LABELS=D.fv_labels||[],AG_LIST=D.ag_list||[],UF_LIST=D.uf_list||[];
+  const FA_LABELS=D.fa_labels||[],FV_LABELS=D.fv_labels||[],AG_LIST=D.ag_list||[],UF_LIST=D.uf_list||[],AS_LIST=D.assessoria_list||[];
   const STATUS_LABEL=D.status_label||{};
+  const showAs = AS_LIST.length > 1;
   const headers=['CPF/CNPJ','Nome','Tipo','Dias Atraso','Faixa Atraso','Saldo (R$)','Faixa Valor','Agrupador','UF','Cidade','Qtd Acionamentos','Último Status','Status + Frequente'];
-  const rows=anFiltered.map(r=>[
-    r[0],r[1],r[2]==='J'?'PJ':'PF',r[3],FA_LABELS[r[4]]||r[4],r[5],FV_LABELS[r[6]]||r[6],AG_LIST[r[7]]||'',UF_LIST[r[8]]||'',r[9],r[10],STATUS_LABEL[r[11]]||r[11]||'',STATUS_LABEL[r[12]]||r[12]||''
-  ]);
+  if(showAs) headers.push('Assessoria');
+  const rows=anFiltered.map(r=>{
+    const row=[r[0],r[1],r[2]==='J'?'PJ':'PF',r[3],FA_LABELS[r[4]]||r[4],r[5],FV_LABELS[r[6]]||r[6],AG_LIST[r[7]]||'',UF_LIST[r[8]]||'',r[9],r[10],STATUS_LABEL[r[11]]||r[11]||'',STATUS_LABEL[r[12]]||r[12]||''];
+    if(showAs) row.push(AS_LIST[r[13]]||'');
+    return row;
+  });
   const wb=XLSX.utils.book_new();
   const ws=XLSX.utils.aoa_to_sheet([headers,...rows]);
   XLSX.utils.book_append_sheet(wb,ws,'Analitico');
-  XLSX.writeFile(wb,`acionamentos_${document.getElementById('mes-select').value}.xlsx`);
+  const asName = currentAs!==null&&AS_LIST[currentAs]?`_${AS_LIST[currentAs].replace(/[^a-zA-Z0-9]/g,'_')}`:'';
+  XLSX.writeFile(wb,`acionamentos_${document.getElementById('mes-select').value}${asName}.xlsx`);
 }
 
 // ══ INIT ══
