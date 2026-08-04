@@ -213,6 +213,32 @@ table.an-table tr:hover td{background:#F8FAFC}
 /* ANALÍTICO LOADING */
 .an-loading{text-align:center;padding:40px;color:#64748B;font-size:13px}
 .an-loading .spinner{margin:0 auto 10px;width:28px;height:28px}
+/* CARTEIRA SUB-TABS */
+.sub-tabs{display:flex;gap:6px;margin-bottom:16px;flex-wrap:wrap}
+.sub-btn{padding:6px 16px;font-size:12px;border:1.5px solid #E2E8F0;border-radius:6px;background:#fff;color:#64748B;cursor:pointer;font-weight:500;transition:all .15s}
+.sub-btn:hover{border-color:#1D4ED8;color:#1D4ED8}
+.sub-btn.active{background:#0F2461;color:#fff;border-color:#0F2461;font-weight:600}
+.sub-panel{display:none}
+.sub-panel.active{display:block}
+/* CARTEIRA FAIXA ROWS */
+.cf-header{display:grid;grid-template-columns:110px 1fr 80px 90px 80px;gap:6px 10px;padding:0 8px 6px;border-bottom:1px solid #E2E8F0;margin-bottom:4px}
+.cf-header span{font-size:10px;color:#64748B;text-transform:uppercase;letter-spacing:.05em;font-weight:600}
+.cf-header .r{text-align:right}
+.cf-row{display:grid;grid-template-columns:110px 1fr 80px 90px 80px;gap:6px 10px;align-items:center;padding:7px 8px;border-radius:7px;margin-bottom:2px}
+.cf-row:hover{background:#F8FAFC}
+.cf-label{font-size:12px;font-weight:500;color:#0F172A}
+.cf-bar-bg{height:14px;background:#F1F5F9;border-radius:4px;overflow:hidden}
+.cf-bar-fill{height:100%;border-radius:4px}
+.cf-val{text-align:right;font-size:12px;font-weight:600;font-variant-numeric:tabular-nums}
+.cf-sub{font-size:10.5px;color:#64748B;text-align:right;font-variant-numeric:tabular-nums}
+/* CARTEIRA AGRUPADOR */
+.ag-row{display:flex;align-items:center;gap:10px;padding:7px 8px;border-radius:7px;margin-bottom:3px}
+.ag-row:hover{background:#F8FAFC}
+.ag-name{flex:1;font-size:12px;color:#0F172A;font-weight:500;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ag-bar-wrap{width:160px;height:8px;background:#F1F5F9;border-radius:4px;overflow:hidden;flex-shrink:0}
+.ag-bar{height:100%;border-radius:4px;background:#1D4ED8}
+.ag-qtd{width:54px;text-align:right;font-size:12px;font-weight:600;color:#0F172A;font-variant-numeric:tabular-nums;flex-shrink:0}
+.ag-pct{width:38px;text-align:right;font-size:11px;color:#64748B;flex-shrink:0}
 </style>
 </head>
 <body>
@@ -250,6 +276,7 @@ table.an-table tr:hover td{background:#F8FAFC}
   <button class="tab-btn" data-tab="matriz">Matriz</button>
   <button class="tab-btn" data-tab="volume">Volume</button>
   <button class="tab-btn" data-tab="analitico">Analítico</button>
+  <button class="tab-btn" data-tab="carteira">Carteira</button>
 </div>
 
 <!-- ══ GERAL ══ -->
@@ -342,6 +369,65 @@ table.an-table tr:hover td{background:#F8FAFC}
   <div class="chart-wrap" style="height:230px"><canvas id="chart-volume"></canvas></div>
   <div class="sec-label">Efetividade das ligações telefônicas</div>
   <div class="chart-wrap" style="height:260px"><canvas id="chart-motivos-bar"></canvas></div>
+</div>
+
+<!-- ══ CARTEIRA ══ -->
+<div id="panel-carteira" class="panel">
+  <div class="sub-tabs">
+    <button class="sub-btn active" onclick="showCarteiraSub('atraso',this)">Faixas de Atraso</button>
+    <button class="sub-btn" onclick="showCarteiraSub('valor',this)">Faixas de Valor</button>
+    <button class="sub-btn" onclick="showCarteiraSub('segmento',this)">Segmentos</button>
+  </div>
+
+  <!-- Sub: Faixas de Atraso -->
+  <div id="csub-atraso" class="sub-panel active">
+    <div class="kpi-grid" id="kpi-c-atraso"></div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;align-items:start" id="c-atraso-layout">
+      <div>
+        <div class="sec-label">Distribuição por faixa — % da carteira</div>
+        <div id="c-atraso-bars"></div>
+      </div>
+      <div>
+        <div class="sec-label">Composição da carteira</div>
+        <div class="chart-wrap" style="height:260px"><canvas id="chart-c-atraso"></canvas></div>
+      </div>
+    </div>
+    <div class="sec-label" style="margin-top:4px">Detalhe por faixa</div>
+    <div id="c-atraso-table"></div>
+  </div>
+
+  <!-- Sub: Faixas de Valor -->
+  <div id="csub-valor" class="sub-panel">
+    <div class="kpi-grid" id="kpi-c-valor"></div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;align-items:start">
+      <div>
+        <div class="sec-label">Distribuição por faixa de valor — % da carteira</div>
+        <div id="c-valor-bars"></div>
+      </div>
+      <div>
+        <div class="sec-label">Composição por valor</div>
+        <div class="chart-wrap" style="height:260px"><canvas id="chart-c-valor"></canvas></div>
+      </div>
+    </div>
+    <div class="sec-label" style="margin-top:4px">Detalhe por faixa de valor</div>
+    <div id="c-valor-table"></div>
+  </div>
+
+  <!-- Sub: Segmentos -->
+  <div id="csub-segmento" class="sub-panel">
+    <div class="kpi-grid" id="kpi-c-seg"></div>
+    <div style="display:grid;grid-template-columns:240px 1fr;gap:20px;align-items:start">
+      <div>
+        <div class="sec-label">Distribuição por segmento</div>
+        <div class="donut-canvas-wrap"><canvas id="chart-c-seg-donut"></canvas></div>
+        <div id="c-seg-donut-legend" style="margin-top:10px"></div>
+      </div>
+      <div>
+        <div class="sec-label">Detalhe por segmento</div>
+        <div id="c-seg-table"></div>
+      </div>
+    </div>
+  </div>
 </div>
 
 <!-- ══ ANALÍTICO ══ -->
@@ -558,6 +644,7 @@ function renderAll(){
   renderValor();
   renderMatrix();
   renderVolume();
+  renderCarteira();
   selAtraso = null; selValor = null; mSel = null;
 }
 
@@ -1081,6 +1168,198 @@ function anExport(){
   XLSX.utils.book_append_sheet(wb,ws,'Analitico');
   const asName = currentAs!==null&&AS_LIST[currentAs]?`_${AS_LIST[currentAs].replace(/[^a-zA-Z0-9]/g,'_')}`:'';
   XLSX.writeFile(wb,`acionamentos_${document.getElementById('mes-select').value}${asName}.xlsx`);
+}
+
+// ══ CARTEIRA ══
+const C_COLORS = ['#3B82F6','#1D4ED8','#0F2461','#F59E0B','#D97706','#DC2626','#991B1B','#7C3AED','#6D28D9'];
+const SEG_DEFS = [
+  {label:'Curto (B)',   faixas:[0],       cor:'#3B82F6', desc:'5–30 dias'},
+  {label:'Médio (C–D)', faixas:[1,2],     cor:'#F59E0B', desc:'31–90 dias'},
+  {label:'Tardia (E–G)',faixas:[3,4,5],   cor:'#DC2626', desc:'91–180 dias'},
+  {label:'Loss (H–J)', faixas:[6,7,8],   cor:'#7C3AED', desc:'181+ dias'},
+];
+let cChartAtraso=null, cChartValor=null, cChartSeg=null;
+
+function showCarteiraSub(id, btn){
+  document.querySelectorAll('#panel-carteira .sub-panel').forEach(p=>p.classList.remove('active'));
+  document.querySelectorAll('#panel-carteira .sub-btn').forEach(b=>b.classList.remove('active'));
+  document.getElementById('csub-'+id).classList.add('active');
+  if(btn) btn.classList.add('active');
+}
+
+function renderCarteira(){
+  if(!D) return;
+  const ad = getAD();
+  const atraso = ad.atraso || [];
+  const valor  = ad.valor  || [];
+  const total  = atraso.reduce((s,f)=>s+f.total,0) || 1;
+
+  // ── Sub 1: Faixas de Atraso ──────────────────────────────────
+  const preTotal  = atraso.slice(0,6).reduce((s,f)=>s+f.total,0);
+  const lossTotal = atraso.slice(6).reduce((s,f)=>s+f.total,0);
+  const maiorFa   = atraso.reduce((a,f)=>f.total>a.total?f:a,{total:0,label:'—'});
+
+  document.getElementById('kpi-c-atraso').innerHTML =
+    kpiHtml('Total carteira',    fmt(total),              'blue',   '') +
+    kpiHtml('Pré-Prejuízo (B–G)',fmt(preTotal),           'amber',  (preTotal/total*100).toFixed(1)+'% da carteira') +
+    kpiHtml('Loss (H–J)',         fmt(lossTotal),          'red',    (lossTotal/total*100).toFixed(1)+'% da carteira') +
+    kpiHtml('Maior faixa',        maiorFa.label,           'purple', fmt(maiorFa.total)+' clientes');
+
+  const maxQtd = Math.max(...atraso.map(f=>f.total));
+  const atrasoAtivos = atraso.filter(f=>f.total>0);
+  document.getElementById('c-atraso-bars').innerHTML = atrasoAtivos.map((f,i)=>{
+    const barW = (f.total/maxQtd*100).toFixed(1);
+    const pct  = (f.total/total*100).toFixed(1);
+    const cor  = C_COLORS[i % C_COLORS.length];
+    return `<div class="cf-row" style="grid-template-columns:110px 1fr 50px 70px">
+      <span class="cf-label">${f.label}</span>
+      <div class="cf-bar-bg"><div class="cf-bar-fill" style="width:${barW}%;background:${cor}"></div></div>
+      <span class="cf-val" style="color:${cor};font-size:11px">${pct}%</span>
+      <span class="cf-sub">${fmt(f.total)}</span>
+    </div>`;
+  }).join('');
+
+  // Tabela detalhada por faixa de atraso
+  document.getElementById('c-atraso-table').innerHTML = `
+    <div class="cf-header" style="grid-template-columns:110px 80px 80px 80px 80px 80px">
+      <span>Faixa</span><span class="r">Clientes</span><span class="r">% Carteira</span>
+      <span class="r">Acionados</span><span class="r">Não acion.</span><span class="r">Cobertura</span>
+    </div>` + atraso.filter(f=>f.total>0).map((f,i)=>`
+    <div class="cf-row" style="grid-template-columns:110px 80px 80px 80px 80px 80px">
+      <span class="cf-label" style="color:${C_COLORS[i%C_COLORS.length]}">${f.label}</span>
+      <span class="cf-val">${fmt(f.total)}</span>
+      <span class="cf-val">${(f.total/total*100).toFixed(1)}%</span>
+      <span class="cf-val" style="color:#059669">${fmt(f.acion)}</span>
+      <span class="cf-val" style="color:${f.nao>0?'#DC2626':'#059669'}">${fmt(f.nao)}</span>
+      <span class="cf-val"><span class="${chipClass(f.pct)}">${f.pct.toFixed(1)}%</span></span>
+    </div>`).join('');
+
+  // Chart donut atraso
+  if(cChartAtraso){ cChartAtraso.destroy(); cChartAtraso=null; }
+  const GRID='#E2E8F0',MUTED='#94A3B8';
+  const TT={backgroundColor:'#fff',borderColor:GRID,borderWidth:1,titleColor:'#0F172A',bodyColor:'#64748B',padding:10,cornerRadius:6};
+  cChartAtraso = new Chart(document.getElementById('chart-c-atraso'),{
+    type:'doughnut',
+    data:{
+      labels: atrasoAtivos.map(f=>f.label),
+      datasets:[{data:atrasoAtivos.map(f=>f.total), backgroundColor:atrasoAtivos.map((_,i)=>C_COLORS[i%C_COLORS.length]), borderWidth:2, borderColor:'#fff'}]
+    },
+    options:{responsive:true,maintainAspectRatio:false,cutout:'52%',
+      plugins:{legend:{display:false},
+        tooltip:{...TT,callbacks:{label:ctx=>' '+fmt(ctx.parsed)+' clientes ('+((ctx.parsed/total)*100).toFixed(1)+'%)'}}}
+    }
+  });
+
+  // ── Sub 2: Faixas de Valor ───────────────────────────────────
+  const totalValor   = valor.reduce((s,f)=>s+f.total,0)||1;
+  const maiorFv      = valor.reduce((a,f)=>f.total>a.total?f:a,{total:0,label:'—'});
+  // Concentração: top-2 faixas de valor mais populosas
+  const sorted2 = [...valor].sort((a,b)=>b.total-a.total).slice(0,2);
+  const conc2   = sorted2.reduce((s,f)=>s+f.total,0);
+
+  document.getElementById('kpi-c-valor').innerHTML =
+    kpiHtml('Total carteira',  fmt(totalValor),  'blue',   '') +
+    kpiHtml('Maior faixa',     maiorFv.label,    'amber',  fmt(maiorFv.total)+' clientes') +
+    kpiHtml('Top 2 faixas',    (conc2/totalValor*100).toFixed(1)+'%', 'purple', 'concentração') +
+    kpiHtml('Faixas c/ clientes', valor.filter(f=>f.total>0).length, '', 'de '+valor.length+' faixas');
+
+  const maxFv = Math.max(...valor.map(f=>f.total));
+  const valorAtivos = valor.filter(f=>f.total>0);
+  document.getElementById('c-valor-bars').innerHTML = valorAtivos.map((f,i)=>{
+    const barW = (f.total/maxFv*100).toFixed(1);
+    const pct  = (f.total/totalValor*100).toFixed(1);
+    const cor  = C_COLORS[i % C_COLORS.length];
+    return `<div class="cf-row" style="grid-template-columns:100px 1fr 50px 70px">
+      <span class="cf-label">${f.label}</span>
+      <div class="cf-bar-bg"><div class="cf-bar-fill" style="width:${barW}%;background:${cor}"></div></div>
+      <span class="cf-val" style="color:${cor};font-size:11px">${pct}%</span>
+      <span class="cf-sub">${fmt(f.total)}</span>
+    </div>`;
+  }).join('');
+
+  document.getElementById('c-valor-table').innerHTML = `
+    <div class="cf-header" style="grid-template-columns:100px 80px 80px 80px 80px 80px">
+      <span>Faixa valor</span><span class="r">Clientes</span><span class="r">% Carteira</span>
+      <span class="r">Acionados</span><span class="r">Não acion.</span><span class="r">Cobertura</span>
+    </div>` + valor.filter(f=>f.total>0).map((f,i)=>`
+    <div class="cf-row" style="grid-template-columns:100px 80px 80px 80px 80px 80px">
+      <span class="cf-label" style="color:${C_COLORS[i%C_COLORS.length]}">${f.label}</span>
+      <span class="cf-val">${fmt(f.total)}</span>
+      <span class="cf-val">${(f.total/totalValor*100).toFixed(1)}%</span>
+      <span class="cf-val" style="color:#059669">${fmt(f.acion)}</span>
+      <span class="cf-val" style="color:${f.nao>0?'#DC2626':'#059669'}">${fmt(f.nao)}</span>
+      <span class="cf-val"><span class="${chipClass(f.pct)}">${f.pct.toFixed(1)}%</span></span>
+    </div>`).join('');
+
+  if(cChartValor){ cChartValor.destroy(); cChartValor=null; }
+  cChartValor = new Chart(document.getElementById('chart-c-valor'),{
+    type:'doughnut',
+    data:{
+      labels: valorAtivos.map(f=>f.label),
+      datasets:[{data:valorAtivos.map(f=>f.total), backgroundColor:valorAtivos.map((_,i)=>C_COLORS[i%C_COLORS.length]), borderWidth:2, borderColor:'#fff'}]
+    },
+    options:{responsive:true,maintainAspectRatio:false,cutout:'52%',
+      plugins:{legend:{display:false},
+        tooltip:{...TT,callbacks:{label:ctx=>' '+fmt(ctx.parsed)+' clientes ('+((ctx.parsed/totalValor)*100).toFixed(1)+'%)'}}}
+    }
+  });
+
+  // ── Sub 3: Segmentos ─────────────────────────────────────────
+  const segs = SEG_DEFS.map(s=>{
+    const rows = s.faixas.map(fi=>atraso[fi]).filter(Boolean);
+    const tot  = rows.reduce((a,r)=>a+r.total,0);
+    const ac   = rows.reduce((a,r)=>a+r.acion,0);
+    const nao  = tot - ac;
+    const pct  = tot > 0 ? ac/tot*100 : 0;
+    return {...s, tot, ac, nao, pct};
+  });
+  const segTotal = segs.reduce((s,sg)=>s+sg.tot,0)||1;
+
+  document.getElementById('kpi-c-seg').innerHTML = segs.map(sg=>
+    kpiHtml(sg.label, fmt(sg.tot), '', (sg.tot/segTotal*100).toFixed(1)+'% da carteira')
+  ).join('');
+
+  // Donut segmentos
+  if(cChartSeg){ cChartSeg.destroy(); cChartSeg=null; }
+  cChartSeg = new Chart(document.getElementById('chart-c-seg-donut'),{
+    type:'doughnut',
+    data:{
+      labels: segs.map(s=>s.label),
+      datasets:[{data:segs.map(s=>s.tot), backgroundColor:segs.map(s=>s.cor), borderWidth:2, borderColor:'#fff'}]
+    },
+    options:{responsive:true,maintainAspectRatio:false,cutout:'55%',
+      plugins:{legend:{display:false},
+        tooltip:{...TT,callbacks:{label:ctx=>' '+fmt(ctx.parsed)+' ('+((ctx.parsed/segTotal)*100).toFixed(1)+'%)'}}}
+    }
+  });
+  document.getElementById('c-seg-donut-legend').innerHTML = segs.map(sg=>`
+    <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px">
+      <span style="width:10px;height:10px;border-radius:2px;background:${sg.cor};flex-shrink:0;display:inline-block"></span>
+      <span style="font-size:12px;color:#64748B;flex:1">${sg.label}</span>
+      <span style="font-size:13px;font-weight:700;color:${sg.cor}">${(sg.tot/segTotal*100).toFixed(1)}%</span>
+    </div>`).join('');
+
+  // Tabela segmentos
+  document.getElementById('c-seg-table').innerHTML = segs.map(sg=>`
+    <div style="border:1px solid #E2E8F0;border-radius:9px;padding:12px 14px;margin-bottom:10px;border-left:3px solid ${sg.cor}">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+        <div>
+          <span style="font-size:13px;font-weight:700;color:${sg.cor}">${sg.label}</span>
+          <span style="font-size:11px;color:#64748B;margin-left:8px">${sg.desc}</span>
+        </div>
+        <span class="${chipClass(sg.pct)}">${sg.pct.toFixed(1)}% cobertura</span>
+      </div>
+      <div class="kpi-grid" style="margin-bottom:0">
+        ${kpiHtml('Clientes', fmt(sg.tot), '', (sg.tot/segTotal*100).toFixed(1)+'% do total')}
+        ${kpiHtml('Acionados', fmt(sg.ac), 'green', '')}
+        ${kpiHtml('Não acionados', fmt(sg.nao), sg.nao>0?'red':'green', '')}
+      </div>
+      <div class="progress-bar" style="margin-top:10px">
+        <div style="width:${sg.pct.toFixed(1)}%;background:${sg.cor}"></div>
+        <div style="flex:1;background:#F1F5F9"></div>
+      </div>
+      <div class="progress-labels"><span style="color:${sg.cor}">Acionados ${sg.pct.toFixed(1)}%</span><span>Sem contato ${(100-sg.pct).toFixed(1)}%</span></div>
+    </div>`).join('');
 }
 
 // ══ INIT ══
