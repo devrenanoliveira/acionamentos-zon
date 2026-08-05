@@ -210,6 +210,20 @@ body.dark .an-as{color:#FB923C}
 /* ANALÍTICO LOADING */
 .an-loading{text-align:center;padding:40px;color:var(--ink3);font-size:13px}
 .an-loading .spinner{margin:0 auto 10px;width:28px;height:28px}
+/* FILTER BAR */
+.filter-bar{background:var(--card);border-bottom:1px solid var(--border);padding:8px 20px;display:flex;flex-wrap:wrap;align-items:center;gap:8px 14px;position:sticky;top:112px;z-index:99;transition:background .2s}
+.filter-bar.hidden{display:none}
+.fb-label{font-size:10.5px;font-weight:700;color:var(--ink3);text-transform:uppercase;letter-spacing:.07em;white-space:nowrap;flex-shrink:0}
+.fb-sep{width:1px;height:18px;background:var(--border);flex-shrink:0}
+.fb-chip{display:flex;align-items:center;gap:5px}
+.fb-chip label{font-size:11px;color:var(--ink3);white-space:nowrap}
+.fb-select{padding:4px 8px;border:1px solid var(--border);border-radius:5px;font-size:11.5px;color:var(--ink);background:var(--card);cursor:pointer;outline:none;transition:border-color .15s}
+.fb-select:focus{border-color:var(--blue)}
+.fb-active{font-size:10px;font-weight:700;padding:2px 8px;border-radius:4px;background:rgba(217,119,6,.12);color:var(--gold-light);border:1px solid rgba(217,119,6,.25);white-space:nowrap}
+.fb-clear{padding:3px 10px;border:1px solid var(--border);border-radius:5px;font-size:11px;color:var(--ink3);background:var(--card);cursor:pointer}
+.fb-clear:hover{background:var(--bg)}
+.filter-notice{font-size:11.5px;color:var(--ink3);background:rgba(59,130,246,.06);border:1px solid rgba(59,130,246,.18);border-radius:7px;padding:8px 12px;margin-bottom:12px;line-height:1.5}
+body.dark .filter-notice{background:rgba(59,130,246,.08)}
 /* CARTEIRA SUB-TABS */
 .sub-tabs{display:flex;gap:6px;margin-bottom:16px;flex-wrap:wrap}
 .sub-btn{padding:6px 16px;font-size:12px;border:1.5px solid var(--border);border-radius:6px;background:var(--card);color:var(--ink3);cursor:pointer;font-weight:500;transition:all .15s}
@@ -290,12 +304,35 @@ body.dark .an-as{color:#FB923C}
   <button class="tab-btn" data-tab="analitico">Analítico</button>
 </nav>
 
+<!-- ── FILTER BAR ── -->
+<div class="filter-bar hidden" id="filter-bar">
+  <span class="fb-label">Filtros de Acionamento</span>
+  <div class="fb-sep"></div>
+  <div class="fb-chip">
+    <label for="tipo-select">Tipo de Ação:</label>
+    <select id="tipo-select" class="fb-select" onchange="onTipoChange()">
+      <option value="">Todos</option>
+      <option value="digital">Ação Digital</option>
+      <option value="tel">Contato Telefônico</option>
+    </select>
+  </div>
+  <div class="fb-chip">
+    <label for="motivo-select">Canal / Motivo:</label>
+    <select id="motivo-select" class="fb-select" onchange="onMotivoChange()">
+      <option value="">Todos</option>
+    </select>
+  </div>
+  <span class="fb-active" id="fb-active-badge" style="display:none"></span>
+  <button class="fb-clear" onclick="clearAcionFilters()">Limpar filtros</button>
+</div>
+
 <div id="header-sub" style="display:none"></div>
 
 <div class="wrap">
 
 <!-- ══ GERAL ══ -->
 <div id="panel-geral" class="panel">
+  <div class="filter-notice" id="fn-geral" style="display:none">ℹ Filtro de tipo/motivo ativo. Os indicadores nesta aba são totais consolidados. Use a aba <strong>Analítico</strong> para ver registros filtrados individualmente.</div>
   <div class="kpi-grid" id="kpi-geral"></div>
   <div class="two-col">
     <div>
@@ -319,6 +356,7 @@ body.dark .an-as{color:#FB923C}
 
 <!-- ══ ATRASO ══ -->
 <div id="panel-atraso" class="panel">
+  <div class="filter-notice" id="fn-atraso" style="display:none">ℹ Filtro de tipo/motivo ativo. As métricas de cobertura nesta aba são consolidadas e não são filtradas por tipo. Use a aba <strong>Analítico</strong> para ver registros filtrados individualmente.</div>
   <div class="kpi-grid" id="kpi-atraso"></div>
   <div class="insight alert" id="insight-atraso"></div>
   <div class="sec-label">Clique em uma faixa para ver breakdown por valor</div>
@@ -335,6 +373,7 @@ body.dark .an-as{color:#FB923C}
 
 <!-- ══ VALOR ══ -->
 <div id="panel-valor" class="panel">
+  <div class="filter-notice" id="fn-valor" style="display:none">ℹ Filtro de tipo/motivo ativo. As métricas de cobertura nesta aba são consolidadas e não são filtradas por tipo. Use a aba <strong>Analítico</strong> para ver registros filtrados individualmente.</div>
   <div class="kpi-grid" id="kpi-valor"></div>
   <div class="insight alert" id="insight-valor"></div>
   <div class="insight warn" id="insight-valor2"></div>
@@ -352,6 +391,7 @@ body.dark .an-as{color:#FB923C}
 
 <!-- ══ MATRIZ ══ -->
 <div id="panel-matriz" class="panel">
+  <div class="filter-notice" id="fn-matriz" style="display:none">ℹ Filtro de tipo/motivo ativo. As métricas de cobertura na matriz são consolidadas e não são filtradas por tipo. Use a aba <strong>Analítico</strong> para ver registros filtrados individualmente.</div>
   <div class="matrix-controls">
     <div class="matrix-desc" id="matrix-desc">Clientes sem acionamento por segmento</div>
     <div class="toggle-group">
@@ -464,12 +504,16 @@ body.dark .an-as{color:#FB923C}
 let D = null;           // dados completos do mês
 let ANALITICO = null;   // dados analíticos por cliente
 let currentAs = null;  // índice da assessoria selecionada (null = todas)
+let currentTipo = '';   // '' | 'digital' | 'tel'
+let currentMotivo = ''; // '' | código do motivo
 let anFiltered = [], anPage = 1, anSortCol = -1, anSortDir = 1;
 let anInited = false, anLoading = false;
 let selAtraso = null, selValor = null;
 let mMode = 'nao', mSel = null;
 let charts = {};
 const AN_PAGE = 50;
+const TEL_MOTIVOS = ['NL','NA','AD','PP','RC','SF','RE','SI','AP','DE','DD','FA'];
+const DIGITAL_MOTIVOS = ['SM'];
 
 // ═══════════════════════════════════════════
 // DADOS ATIVOS (global ou por assessoria)
@@ -529,6 +573,73 @@ function applyChartDefaults(){
 applyChartDefaults();
 
 // ═══════════════════════════════════════════
+// FILTROS DE ACIONAMENTO (Tipo / Motivo)
+// ═══════════════════════════════════════════
+function onTipoChange(){
+  currentTipo = document.getElementById('tipo-select').value;
+  currentMotivo = '';
+  populateMotivoSelect();
+  updateFbBadge();
+  applyAcionFilters();
+}
+function onMotivoChange(){
+  currentMotivo = document.getElementById('motivo-select').value;
+  updateFbBadge();
+  applyAcionFilters();
+}
+function populateMotivoSelect(){
+  const sel = document.getElementById('motivo-select');
+  if(!sel) return;
+  const labels = D&&D.status_label ? D.status_label : {};
+  let motivos;
+  if(currentTipo === 'digital')     motivos = DIGITAL_MOTIVOS;
+  else if(currentTipo === 'tel')    motivos = TEL_MOTIVOS;
+  else                              motivos = [...DIGITAL_MOTIVOS, ...TEL_MOTIVOS];
+  sel.innerHTML = '<option value="">Todos</option>' +
+    motivos.map(cod=>`<option value="${cod}">${labels[cod]||cod}</option>`).join('');
+  sel.value = '';
+}
+function updateFbBadge(){
+  const b = document.getElementById('fb-active-badge');
+  if(!b) return;
+  const active = currentTipo || currentMotivo;
+  b.style.display = active ? '' : 'none';
+  if(active){
+    const labels = D&&D.status_label ? D.status_label : {};
+    const parts = [];
+    if(currentTipo) parts.push(currentTipo==='digital' ? 'Ação Digital' : 'Contato Telefônico');
+    if(currentMotivo) parts.push(labels[currentMotivo]||currentMotivo);
+    b.textContent = parts.join(' · ');
+  }
+  // Mostrar avisos nas abas consolidadas quando filtro está ativo
+  const hasFilter = !!(currentTipo || currentMotivo);
+  ['fn-geral','fn-atraso','fn-valor','fn-matriz'].forEach(id=>{
+    const el=document.getElementById(id);
+    if(el) el.style.display = hasFilter ? '' : 'none';
+  });
+}
+function clearAcionFilters(){
+  currentTipo=''; currentMotivo='';
+  const ts=document.getElementById('tipo-select');
+  if(ts) ts.value='';
+  populateMotivoSelect();
+  updateFbBadge();
+  applyAcionFilters();
+}
+function applyAcionFilters(){
+  if(!D) return;
+  const activeTab = document.querySelector('.tab-btn.active')?.dataset.tab;
+  // Volume: recriar gráfico filtrado por tipo
+  if(activeTab === 'volume'){
+    if(charts.volume){ charts.volume.destroy(); delete charts.volume; }
+    if(charts.motivosBar){ charts.motivosBar.destroy(); delete charts.motivosBar; }
+    renderVolume();
+  }
+  // Analítico: re-filtrar tabela
+  if(activeTab === 'analitico' && anInited) anFilter();
+}
+
+// ═══════════════════════════════════════════
 // TABS
 // ═══════════════════════════════════════════
 document.querySelectorAll('.tab-btn').forEach(btn=>{
@@ -537,6 +648,9 @@ document.querySelectorAll('.tab-btn').forEach(btn=>{
     document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));
     btn.classList.add('active');
     document.getElementById('panel-'+btn.dataset.tab).classList.add('active');
+    // Mostrar/ocultar filtros (não exibir na aba Carteira)
+    const fb = document.getElementById('filter-bar');
+    if(fb) fb.classList.toggle('hidden', btn.dataset.tab === 'carteira');
     if(btn.dataset.tab==='analitico' && !anInited && !anLoading) loadAnalitico();
   });
 });
@@ -578,6 +692,7 @@ function onAssessoriaChange(){
   // Re-renderizar tudo com os dados da assessoria
   Object.values(charts).forEach(c=>c.destroy());
   charts = {};
+  currentTipo = ''; currentMotivo = '';
   selAtraso = null; selValor = null; mMode = 'nao'; mSel = null;
   document.getElementById('btn-nao').classList.add('active');
   document.getElementById('btn-pct').classList.remove('active');
@@ -611,6 +726,7 @@ async function loadIndex(){
 async function loadMes(mesId){
   showLoading('Carregando dados de '+ mesId +'…');
   currentAs = null;
+  currentTipo = ''; currentMotivo = '';
   anInited = false; anLoading = false; ANALITICO = null;
   document.getElementById('an-content').innerHTML = `<div class="an-loading"><div class="spinner"></div>Clique na aba para carregar os dados analíticos…</div>`;
   const activeTab = document.querySelector('.tab-btn.active');
@@ -625,6 +741,7 @@ async function loadMes(mesId){
     if(!r.ok) throw new Error('HTTP '+r.status);
     D = await r.json();
     populateAssessoriaSelect();
+    populateMotivoSelect();
     renderAll();
     hideLoading();
   } catch(e){
@@ -967,14 +1084,17 @@ function renderVolume(){
   const GRID='#E2E8F0', MUTED='#94A3B8';
   const TT={backgroundColor:'#fff',borderColor:GRID,borderWidth:1,titleColor:'#0F172A',bodyColor:'#64748B',padding:10,cornerRadius:6};
 
+  const showDigital = currentTipo !== 'tel';
+  const showTel     = currentTipo !== 'digital';
+  const volumeDatasets = [
+    showDigital ? {label:'Digital',    data:vol.map(d=>d.digital), backgroundColor:'#1D4ED8', stack:'a'} : null,
+    showTel     ? {label:'Telefônico', data:vol.map(d=>d.tel),     backgroundColor:'#7C3AED', stack:'a', borderRadius:{topLeft:3,topRight:3}} : null,
+  ].filter(Boolean);
   charts.volume = new Chart(document.getElementById('chart-volume'),{
     type:'bar',
     data:{
       labels:vol.map(d=>d.dia+(d.fds?' ↓':'')),
-      datasets:[
-        {label:'Digital',data:vol.map(d=>d.digital),backgroundColor:'#1D4ED8',stack:'a'},
-        {label:'Telefônico',data:vol.map(d=>d.tel),backgroundColor:'#7C3AED',stack:'a',borderRadius:{topLeft:3,topRight:3}}
-      ]
+      datasets: volumeDatasets
     },
     options:{responsive:true,maintainAspectRatio:false,
       plugins:{legend:{display:false},tooltip:{...TT,callbacks:{
@@ -1095,6 +1215,10 @@ function anFilter(){
     if(qtd==='7' && r[10]<7) return false;
     // r[13] = as_idx (pode ser undefined em dados antigos)
     if(asFilter!=='' && asFilter!==undefined && r[13]!==undefined && String(r[13])!==asFilter) return false;
+    // Filtros globais de tipo/motivo (r[11] = UltimoStatus)
+    if(currentTipo === 'digital' && !DIGITAL_MOTIVOS.includes(r[11])) return false;
+    if(currentTipo === 'tel'     && !TEL_MOTIVOS.includes(r[11]))     return false;
+    if(currentMotivo && r[11] !== currentMotivo) return false;
     return true;
   });
   if(anSortCol>=0) anApplySort();
@@ -1120,11 +1244,16 @@ function anClear(){
   });
   const qtdEl=document.getElementById('an-qtd');
   if(qtdEl) qtdEl.value='0';
-  // Respeitar filtro global
+  // Respeitar filtro global de assessoria
   if(currentAs !== null){
     const asEl=document.getElementById('an-as');
     if(asEl) asEl.value=String(currentAs);
   }
+  // Limpar também filtros globais tipo/motivo
+  currentTipo=''; currentMotivo='';
+  const ts=document.getElementById('tipo-select'); if(ts) ts.value='';
+  populateMotivoSelect();
+  updateFbBadge();
   anSortCol=-1;anSortDir=1;
   ['th-dias','th-saldo','th-qtd'].forEach(id=>{const e=document.getElementById(id);if(e)e.classList.remove('sort-asc','sort-desc');});
   anFilter();
