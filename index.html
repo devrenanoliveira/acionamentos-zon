@@ -396,6 +396,7 @@ body.dark .filter-notice{background:rgba(59,130,246,.08)}
     <div class="matrix-desc" id="matrix-desc">Clientes sem acionamento por segmento</div>
     <div class="toggle-group">
       <button class="toggle-btn active" id="btn-nao" onclick="setMatrixMode('nao')">Não acionados</button>
+      <button class="toggle-btn" id="btn-acion" onclick="setMatrixMode('acion')">Acionados</button>
       <button class="toggle-btn" id="btn-pct" onclick="setMatrixMode('pct')">% Cobertura</button>
     </div>
   </div>
@@ -652,6 +653,10 @@ document.querySelectorAll('.tab-btn').forEach(btn=>{
     const fb = document.getElementById('filter-bar');
     if(fb) fb.classList.toggle('hidden', btn.dataset.tab === 'carteira');
     if(btn.dataset.tab==='analitico' && !anInited && !anLoading) loadAnalitico();
+    // Re-aplicar filtros ao trocar de aba (para Volume e Analítico respeitarem o estado ativo)
+    else if(btn.dataset.tab !== 'carteira' && (currentTipo || currentMotivo)) {
+      setTimeout(applyAcionFilters, 0);
+    }
   });
 });
 
@@ -695,6 +700,7 @@ function onAssessoriaChange(){
   currentTipo = ''; currentMotivo = '';
   selAtraso = null; selValor = null; mMode = 'nao'; mSel = null;
   document.getElementById('btn-nao').classList.add('active');
+  document.getElementById('btn-acion').classList.remove('active');
   document.getElementById('btn-pct').classList.remove('active');
   renderAll();
   // Re-filtrar analítico se estiver carregado
@@ -997,7 +1003,7 @@ function renderMatrix(){
     row.forEach(([nao,tot],vi)=>{
       const s=cellStyle(nao,tot,ad.max_nao);
       const isSel=mSel&&mSel.ai===ai&&mSel.vi===vi;
-      const disp=!s?'—':mMode==='nao'?fmt(nao):((tot-nao)/tot*100).toFixed(1)+'%';
+      const disp=!s?'—':mMode==='nao'?fmt(nao):mMode==='acion'?fmt(tot-nao):((tot-nao)/tot*100).toFixed(1)+'%';
       const ol=isSel?'outline:2px solid #1D4ED8;outline-offset:1px;':'';
       h+=!s?`<td><span class="mcell empty">${disp}</span></td>`
            :`<td><span class="mcell" style="background:${s.bg};color:${s.co};${ol}" onclick="clickMatrix(${ai},${vi})">${disp}</span></td>`;
@@ -1009,12 +1015,15 @@ function renderMatrix(){
   const maxN = ad.max_nao||1;
   const items=mMode==='nao'
     ?[['#DCFCE7','Zero'],['#FEF9C3','1–'+Math.floor(maxN*0.33)],['#FED7AA',Math.floor(maxN*0.33+1)+'–'+Math.floor(maxN*0.67*2.5)],['#FECACA','...'],['#F87171',maxN+'+']]
+    :mMode==='acion'
+    ?[['#FEE2E2','Zero'],['#FECACA','<40%'],['#FEF9C3','40–69%'],['#BBF7D0','70–94%'],['#DCFCE7','≥95%']]
     :[['#DCFCE7','≥90%'],['#D1FAE5','70–89%'],['#FEF9C3','50–69%'],['#FECACA','25–49%'],['#F87171','<25%']];
   document.getElementById('matrix-legend').innerHTML=items.map(([bg,l])=>`<span><span class="sw" style="background:${bg}"></span>${l}</span>`).join('');
 }
 
 function cellStyle(nao,t,maxN){
   if(t===0) return null;
+  const acion=t-nao;
   if(mMode==='nao'){
     if(nao===0) return {bg:'#DCFCE7',co:'#166534'};
     const r=nao/(maxN||1);
@@ -1022,8 +1031,15 @@ function cellStyle(nao,t,maxN){
     if(r<0.20) return {bg:'#FED7AA',co:'#9A3412'};
     if(r<0.50) return {bg:'#FECACA',co:'#991B1B'};
     return {bg:'#F87171',co:'#7F1D1D'};
+  } else if(mMode==='acion'){
+    if(acion===0) return {bg:'#FEE2E2',co:'#991B1B'};
+    const r=acion/t;
+    if(r>=0.95) return {bg:'#DCFCE7',co:'#166534'};
+    if(r>=0.70) return {bg:'#BBF7D0',co:'#065F46'};
+    if(r>=0.40) return {bg:'#FEF9C3',co:'#854D0E'};
+    return {bg:'#FECACA',co:'#991B1B'};
   } else {
-    const c=(t-nao)/t*100;
+    const c=acion/t*100;
     if(c>=90) return {bg:'#DCFCE7',co:'#166534'};
     if(c>=70) return {bg:'#D1FAE5',co:'#065F46'};
     if(c>=50) return {bg:'#FEF9C3',co:'#854D0E'};
@@ -1035,8 +1051,10 @@ function cellStyle(nao,t,maxN){
 function setMatrixMode(m){
   mMode=m;
   document.getElementById('btn-nao').classList.toggle('active',m==='nao');
+  document.getElementById('btn-acion').classList.toggle('active',m==='acion');
   document.getElementById('btn-pct').classList.toggle('active',m==='pct');
-  document.getElementById('matrix-desc').textContent=m==='nao'?'Clientes sem acionamento por segmento':'Cobertura de acionamentos por segmento (%)';
+  const descs={nao:'Clientes sem acionamento por segmento',acion:'Clientes acionados por segmento',pct:'Cobertura de acionamentos por segmento (%)'};
+  document.getElementById('matrix-desc').textContent=descs[m]||'';
   renderMatrix();
 }
 
