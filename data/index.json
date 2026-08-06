@@ -3,12 +3,10 @@
     {
       "id": "2026-08",
       "label": "Agosto 2026",
-      "periodo": "01–31 ago/2026"
-    },
-    {
-      "id": "2026-07",
-      "label": "Julho 2026",
-      "periodo": "01–31 jul/2026"
+      "periodo": "01–31 ago/2026",
+      "total": 63203,
+      "acionados": 61863,
+      "cobertura_pct": 97.9
     }
   ]
 }
