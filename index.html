@@ -394,7 +394,8 @@ body.dark .filter-notice{background:rgba(59,130,246,.08)}
 
 <!-- ══ MATRIZ ══ -->
 <div id="panel-matriz" class="panel">
-  <div class="filter-notice" id="fn-matriz" style="display:none">ℹ Filtro de tipo/motivo ativo. As métricas de cobertura na matriz são consolidadas e não são filtradas por tipo. Use a aba <strong>Analítico</strong> para ver registros filtrados individualmente.</div>
+  <div class="filter-notice" id="fn-matriz" style="display:none">ℹ Filtro de tipo/motivo ativo.</div>
+  <div class="filter-notice" id="matrix-filter-notice" style="display:none;background:rgba(29,78,216,.08);border-color:#3B82F6;color:#1D4ED8"></div>
   <div class="matrix-controls">
     <div class="matrix-desc" id="matrix-desc">Clientes sem acionamento por segmento</div>
     <div class="toggle-group">
@@ -628,10 +629,13 @@ function updateFbBadge(){
   }
   // Mostrar avisos nas abas consolidadas quando filtro está ativo
   const hasFilter = !!(currentTipo || currentMotivo);
-  ['fn-geral','fn-atraso','fn-valor','fn-matriz'].forEach(id=>{
+  ['fn-geral','fn-atraso','fn-valor'].forEach(id=>{
     const el=document.getElementById(id);
     if(el) el.style.display = hasFilter ? '' : 'none';
   });
+  // fn-matriz: oculto agora — matrix-filter-notice é renderizado por renderMatrix()
+  const fnMat = document.getElementById('fn-matriz');
+  if(fnMat) fnMat.style.display = 'none';
 }
 function clearAcionFilters(){
   currentTipo=''; currentMotivo='';
@@ -652,6 +656,67 @@ function applyAcionFilters(){
   }
   // Analítico: re-filtrar tabela
   if(activeTab === 'analitico' && anInited) anFilter();
+  // Matriz: re-renderizar com filtro aplicado
+  if(activeTab === 'matriz'){
+    if((currentTipo || currentMotivo) && !anInited && !anLoading) loadAnaliticoSilent();
+    else renderMatrix();
+  }
+}
+
+// Carrega ANALITICO silenciosamente (sem trocar de aba) para uso na Matriz filtrada
+async function loadAnaliticoSilent(){
+  if(anInited || anLoading) return;
+  anLoading = true;
+  const mesId = document.getElementById('mes-select').value;
+  try {
+    const r = await fetch(`data/${mesId}-analitico.json?v=`+Date.now());
+    if(!r.ok) throw new Error('HTTP '+r.status);
+    ANALITICO = normalizeAnalitico(await r.json());
+    anInited = true; anLoading = false;
+    // Se ainda estiver na aba matriz, re-renderizar
+    const activeTab = document.querySelector('.tab-btn.active')?.dataset.tab;
+    if(activeTab === 'matriz') renderMatrix();
+  } catch(e){
+    anLoading = false;
+  }
+}
+
+// Computa matriz dinamicamente a partir dos dados analíticos filtrados
+function computeFilteredMatrix(){
+  if(!ANALITICO || !D) return null;
+  const nFa = D.fa_labels.length, nFv = D.fv_labels.length;
+  const matrix = Array.from({length:nFa}, ()=>Array.from({length:nFv}, ()=>[0,0]));
+  const asFilter = currentAs !== null ? currentAs : null;
+  ANALITICO.forEach(r=>{
+    if(asFilter !== null && r[13] !== undefined && r[13] !== asFilter) return;
+    const fi = r[4], vi = r[6];
+    if(fi < 0 || fi >= nFa || vi < 0 || vi >= nFv) return;
+    matrix[fi][vi][1]++;
+    const qtdTel = r[15] !== undefined ? r[15] : null;
+    let acionado;
+    if(currentTipo === 'digital')      acionado = qtdTel !== null ? (r[10]-qtdTel) > 0 : r[10] > 0;
+    else if(currentTipo === 'tel')     acionado = qtdTel !== null ? qtdTel > 0          : r[10] > 0;
+    else                               acionado = r[10] > 0;
+    if(currentMotivo && r[11] !== currentMotivo) acionado = false;
+    if(!acionado) matrix[fi][vi][0]++;
+  });
+  return matrix;
+}
+
+// Retorna a matriz ativa: filtrada dinamicamente se filtro ativo + ANALITICO carregado, ou consolidada
+function getActiveMatrix(){
+  const ad = getAD();
+  if((currentTipo || currentMotivo) && anInited){
+    return computeFilteredMatrix() || ad.matrix;
+  }
+  return ad.matrix;
+}
+
+// Calcula max_nao da matriz ativa (para escala de cor)
+function getActiveMaxNao(matrix){
+  let maxN = 0;
+  matrix.forEach(row=>row.forEach(([nao])=>{ if(nao>maxN) maxN=nao; }));
+  return maxN || 1;
 }
 
 // ═══════════════════════════════════════════
@@ -667,6 +732,8 @@ document.querySelectorAll('.tab-btn').forEach(btn=>{
     const fb = document.getElementById('filter-bar');
     if(fb) fb.classList.toggle('hidden', btn.dataset.tab === 'carteira');
     if(btn.dataset.tab==='analitico' && !anInited && !anLoading) loadAnalitico();
+    // Ao ir para Matriz com filtro ativo, carregar ANALITICO em background se necessário
+    else if(btn.dataset.tab==='matriz' && (currentTipo || currentMotivo) && !anInited && !anLoading) loadAnaliticoSilent();
     // Re-aplicar filtros ao trocar de aba (para Volume e Analítico respeitarem o estado ativo)
     else if(btn.dataset.tab !== 'carteira' && (currentTipo || currentMotivo)) {
       setTimeout(applyAcionFilters, 0);
@@ -1166,7 +1233,8 @@ function clickAtraso(i){
   selAtraso=i;
   renderSegTable('seg-atraso',ad.atraso,'clickAtraso',i);
   const row=ad.atraso[i];
-  const drill=ad.matrix[i].map(([nao,tot],vi)=>({
+  const activeMatrix = getActiveMatrix();
+  const drill=activeMatrix[i].map(([nao,tot],vi)=>({
     label:D.fv_labels[vi],total:tot,acion:tot-nao,nao,
     pct:tot>0?parseFloat(((tot-nao)/tot*100).toFixed(1)):null
   })).filter(d=>d.total>0);
@@ -1186,9 +1254,10 @@ function clickValor(i){
   selValor=i;
   renderSegTable('seg-valor',ad.valor,'clickValor',i);
   const row=ad.valor[i];
+  const activeMatrix = getActiveMatrix();
   const drill=ad.atraso.map((a,ai)=>({
-    label:a.label,total:ad.matrix[ai][i][1],acion:ad.matrix[ai][i][1]-ad.matrix[ai][i][0],nao:ad.matrix[ai][i][0],
-    pct:ad.matrix[ai][i][1]>0?parseFloat(((ad.matrix[ai][i][1]-ad.matrix[ai][i][0])/ad.matrix[ai][i][1]*100).toFixed(1)):null
+    label:a.label,total:activeMatrix[ai][i][1],acion:activeMatrix[ai][i][1]-activeMatrix[ai][i][0],nao:activeMatrix[ai][i][0],
+    pct:activeMatrix[ai][i][1]>0?parseFloat(((activeMatrix[ai][i][1]-activeMatrix[ai][i][0])/activeMatrix[ai][i][1]*100).toFixed(1)):null
   })).filter(d=>d.total>0);
   document.getElementById('drill-valor-title').textContent=row.label+' — por faixa de atraso';
   document.getElementById('drill-valor-kpis').innerHTML=
@@ -1211,13 +1280,35 @@ function renderMatrix(){
   const ad = getAD();
   const el=document.getElementById('matrix-table');
   const VAL_LABELS = D.fv_labels||[];
+  // Filtro ativo mas ANALITICO ainda carregando → exibir aviso
+  const filterActive = !!(currentTipo || currentMotivo);
+  const filteredMatrix = filterActive && anInited ? computeFilteredMatrix() : null;
+  const matrix = filteredMatrix || ad.matrix;
+  const maxN = filteredMatrix ? getActiveMaxNao(matrix) : (ad.max_nao||1);
+  // Aviso de filtro ativo na matriz
+  const notice = document.getElementById('matrix-filter-notice');
+  if(notice){
+    if(filterActive && !anInited){
+      notice.style.display='';
+      notice.textContent = anLoading ? '⏳ Carregando dados para aplicar filtro na matriz…' : '⚠ Dados analíticos não carregados. Troque para a aba Analítico para ativar o filtro.';
+    } else if(filterActive && filteredMatrix){
+      notice.style.display='';
+      const labels=D&&D.status_label?D.status_label:{};
+      const parts=[];
+      if(currentTipo) parts.push(currentTipo==='digital'?'Ação Digital':'Contato Telefônico');
+      if(currentMotivo) parts.push(labels[currentMotivo]||currentMotivo);
+      notice.textContent = '🔍 Matriz filtrada por: '+parts.join(' · ')+' (calculado dinamicamente)';
+    } else {
+      notice.style.display='none';
+    }
+  }
   let h='<thead><tr><th class="rh">Atraso \\ Valor</th>';
   VAL_LABELS.forEach(v=>{h+=`<th>${v}</th>`;});
   h+='</tr></thead><tbody>';
-  ad.matrix.forEach((row,ai)=>{
+  matrix.forEach((row,ai)=>{
     h+=`<tr><td class="rh">${ad.atraso[ai]?ad.atraso[ai].label:D.fa_labels[ai]}</td>`;
     row.forEach(([nao,tot],vi)=>{
-      const s=cellStyle(nao,tot,ad.max_nao);
+      const s=cellStyle(nao,tot,maxN);
       const isSel=mSel&&mSel.ai===ai&&mSel.vi===vi;
       const disp=!s?'—':mMode==='nao'?fmt(nao):mMode==='acion'?fmt(tot-nao):((tot-nao)/tot*100).toFixed(1)+'%';
       const ol=isSel?'outline:2px solid #1D4ED8;outline-offset:1px;':'';
@@ -1228,9 +1319,9 @@ function renderMatrix(){
   });
   h+='</tbody>';
   el.innerHTML=h;
-  const maxN = ad.max_nao||1;
+  const maxNleg = maxN;
   const items=mMode==='nao'
-    ?[['#DCFCE7','Zero'],['#FEF9C3','1–'+Math.floor(maxN*0.33)],['#FED7AA',Math.floor(maxN*0.33+1)+'–'+Math.floor(maxN*0.67*2.5)],['#FECACA','...'],['#F87171',maxN+'+']]
+    ?[['#DCFCE7','Zero'],['#FEF9C3','1–'+Math.floor(maxNleg*0.33)],['#FED7AA',Math.floor(maxNleg*0.33+1)+'–'+Math.floor(maxNleg*0.67*2.5)],['#FECACA','...'],['#F87171',maxNleg+'+']]
     :mMode==='acion'
     ?[['#FEE2E2','Zero'],['#FECACA','<40%'],['#FEF9C3','40–69%'],['#BBF7D0','70–94%'],['#DCFCE7','≥95%']]
     :[['#DCFCE7','≥90%'],['#D1FAE5','70–89%'],['#FEF9C3','50–69%'],['#FECACA','25–49%'],['#F87171','<25%']];
@@ -1276,7 +1367,8 @@ function setMatrixMode(m){
 
 function clickMatrix(ai,vi){
   const ad = getAD();
-  const [nao,tot]=ad.matrix[ai][vi];
+  const activeMatrix = getActiveMatrix();
+  const [nao,tot]=activeMatrix[ai][vi];
   if(tot===0) return;
   if(mSel&&mSel.ai===ai&&mSel.vi===vi){closeMatrixDetail();return;}
   mSel={ai,vi};
