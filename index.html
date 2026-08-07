@@ -419,16 +419,19 @@ body.dark .filter-notice{background:rgba(59,130,246,.08)}
 
 <!-- ══ VOLUME ══ -->
 <div id="panel-volume" class="panel">
+  <div class="filter-notice" id="fn-volume" style="display:none">ℹ Filtro de motivo ativo. O volume diário é agregado por canal (digital/telefônico) — não é possível filtrar por motivo nesta aba. Use a aba <strong>Analítico</strong> para ver registros por motivo.</div>
   <div class="kpi-grid" id="kpi-volume"></div>
   <div class="sec-label">Volume diário por canal</div>
-  <div style="display:flex;gap:14px;margin-bottom:8px">
+  <div style="display:flex;gap:14px;margin-bottom:8px" id="vol-legend">
     <span style="display:flex;align-items:center;gap:5px;font-size:11px;color:#64748B"><span style="width:9px;height:9px;border-radius:2px;background:#1D4ED8;display:inline-block"></span>Digital</span>
     <span style="display:flex;align-items:center;gap:5px;font-size:11px;color:#64748B"><span style="width:9px;height:9px;border-radius:2px;background:#7C3AED;display:inline-block"></span>Telefônico</span>
     <span style="font-size:11px;color:#64748B">· Fins de semana com volume reduzido</span>
   </div>
   <div class="chart-wrap" style="height:230px"><canvas id="chart-volume"></canvas></div>
-  <div class="sec-label">Efetividade das ligações telefônicas</div>
-  <div class="chart-wrap" style="height:260px"><canvas id="chart-motivos-bar"></canvas></div>
+  <div id="vol-efetividade-section">
+    <div class="sec-label">Efetividade das ligações telefônicas</div>
+    <div class="chart-wrap" style="height:260px"><canvas id="chart-motivos-bar"></canvas></div>
+  </div>
 </div>
 
 <!-- ══ CARTEIRA ══ -->
@@ -628,6 +631,9 @@ function updateFbBadge(){
     const el=document.getElementById(id);
     if(el) el.style.display = hasFilter ? '' : 'none';
   });
+  // fn-volume: controlado pelo renderVolume() — só esconde aqui se não há filtro
+  const fnVol2 = document.getElementById('fn-volume');
+  if(fnVol2 && !currentMotivo) fnVol2.style.display = 'none';
   // fn-matriz: oculto agora — matrix-filter-notice é renderizado por renderMatrix()
   const fnMat = document.getElementById('fn-matriz');
   if(fnMat) fnMat.style.display = 'none';
@@ -1392,20 +1398,52 @@ function renderVolume(){
   const totalDigital=vol.reduce((s,d)=>s+d.digital,0);
   const totalTel=vol.reduce((s,d)=>s+d.tel,0);
   const totalAcion = ad.total_acionamentos || (totalDigital+totalTel);
-  const pico=vol.reduce((a,d)=>d.digital+d.tel>a.digital+a.tel?d:a);
 
-  document.getElementById('kpi-volume').innerHTML =
-    kpiHtml('Total período',fmt(totalAcion),'','acionamentos') +
-    kpiHtml('Digital',(totalAcion>0?(totalDigital/totalAcion*100).toFixed(1):0)+'%','blue',`${fmt(totalDigital)} acion.`) +
-    kpiHtml('Telefônico',(totalAcion>0?(totalTel/totalAcion*100).toFixed(1):0)+'%','purple',`${fmt(totalTel)} ligações`) +
-    kpiHtml('Pico diário',fmt(pico.digital+pico.tel),'green',`${pico.dia} — pico`) +
-    kpiHtml('Promessas',fmt(ad.com_promessa),'amber',totalTel>0?`${((ad.com_promessa/totalTel)*100).toFixed(1)}% das ligações`:'');
+  // Aviso: filtro de motivo não pode ser aplicado em dados agregados de volume
+  const fnVol = document.getElementById('fn-volume');
+  if(fnVol) fnVol.style.display = currentMotivo ? '' : 'none';
+
+  // KPIs ajustados conforme o filtro de Tipo de Ação
+  const showDigital = currentTipo !== 'tel';
+  const showTel     = currentTipo !== 'digital';
+  const filteredTotal = (showDigital ? totalDigital : 0) + (showTel ? totalTel : 0);
+  const pico = vol.reduce((a,d)=>{
+    const va=(showDigital?d.digital:0)+(showTel?d.tel:0);
+    const aa=(showDigital?a.digital:0)+(showTel?a.tel:0);
+    return va>aa?d:a;
+  });
+  const picoVal=(showDigital?pico.digital:0)+(showTel?pico.tel:0);
+
+  // Esconder seção de efetividade telefônica quando filtro for apenas digital
+  const efetSec = document.getElementById('vol-efetividade-section');
+  if(efetSec) efetSec.style.display = currentTipo === 'digital' ? 'none' : '';
+
+  let kpiHtml_ = '';
+  if(!currentTipo){
+    // Sem filtro de tipo: exibe todos os KPIs normais
+    kpiHtml_ =
+      kpiHtml('Total período',fmt(totalAcion),'','acionamentos') +
+      kpiHtml('Digital',(totalAcion>0?(totalDigital/totalAcion*100).toFixed(1):0)+'%','blue',`${fmt(totalDigital)} acion.`) +
+      kpiHtml('Telefônico',(totalAcion>0?(totalTel/totalAcion*100).toFixed(1):0)+'%','purple',`${fmt(totalTel)} ligações`) +
+      kpiHtml('Pico diário',fmt(picoVal),'green',`${pico.dia} — pico`) +
+      kpiHtml('Promessas',fmt(ad.com_promessa),'amber',totalTel>0?`${((ad.com_promessa/totalTel)*100).toFixed(1)}% das ligações`:'');
+  } else if(currentTipo === 'digital'){
+    kpiHtml_ =
+      kpiHtml('Total Digital',fmt(totalDigital),'blue','acionamentos digitais') +
+      kpiHtml('% do Total',(totalAcion>0?(totalDigital/totalAcion*100).toFixed(1):0)+'%','blue','do volume total') +
+      kpiHtml('Pico diário',fmt(picoVal),'green',`${pico.dia} — pico`);
+  } else {
+    kpiHtml_ =
+      kpiHtml('Total Telefônico',fmt(totalTel),'purple','ligações') +
+      kpiHtml('% do Total',(totalAcion>0?(totalTel/totalAcion*100).toFixed(1):0)+'%','purple','do volume total') +
+      kpiHtml('Pico diário',fmt(picoVal),'green',`${pico.dia} — pico`) +
+      kpiHtml('Promessas',fmt(ad.com_promessa),'amber',totalTel>0?`${((ad.com_promessa/totalTel)*100).toFixed(1)}% das ligações`:'');
+  }
+  document.getElementById('kpi-volume').innerHTML = kpiHtml_;
 
   const GRID='#E2E8F0', MUTED='#94A3B8';
   const TT={backgroundColor:'#fff',borderColor:GRID,borderWidth:1,titleColor:'#0F172A',bodyColor:'#64748B',padding:10,cornerRadius:6};
 
-  const showDigital = currentTipo !== 'tel';
-  const showTel     = currentTipo !== 'digital';
   const volumeDatasets = [
     showDigital ? {label:'Digital',    data:vol.map(d=>d.digital), backgroundColor:'#1D4ED8', stack:'a'} : null,
     showTel     ? {label:'Telefônico', data:vol.map(d=>d.tel),     backgroundColor:'#7C3AED', stack:'a', borderRadius:{topLeft:3,topRight:3}} : null,
