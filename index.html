@@ -732,13 +732,17 @@ function toggleShowAcordos(){
   showAcordos = !showAcordos;
   const btn = document.getElementById('btn-show-acordos');
   if(btn) btn.classList.toggle('active', showAcordos);
-  // Re-renderizar abas afetadas
+  // Re-renderizar TODAS as abas que podem ter charts.* ativos, para evitar
+  // canvas destruído sem recriação (ficava "quebrado" até outro filtro forçar redraw)
   Object.values(charts).forEach(c=>c.destroy());
   charts = {};
   renderGeral();
   renderAtraso();
   renderValor();
   renderMatrix();
+  renderVolume();
+  // Analítico: reaplicar filtro (exclui/inclui acordos conforme showAcordos)
+  if(anInited) anFilter();
 }
 
 // Retorna ad.atraso filtrado (sem "Acordo") conforme o toggle showAcordos
@@ -1650,7 +1654,13 @@ function anFilter(){
     // Canal/Motivo: r[11] = último motivo registrado para o cliente
     if(currentMotivo && r[11] !== currentMotivo) return false;
     // Filtro de acordo: r[14] = is_acordo (1=acordo; undefined = JSON antigo, trata como 0)
-    if(anAcordo && (r[14] === undefined ? 0 : r[14]) !== 1) return false;
+    const isAcordoRow = (r[14] === undefined ? 0 : r[14]) === 1;
+    // Botão local "🤝 Acordo": isola SOMENTE os clientes em acordo (tem prioridade)
+    if(anAcordo && !isAcordoRow) return false;
+    // Toggle global "🤝 Acordos" (barra de filtros): quando desativado, exclui os
+    // clientes em acordo por padrão — a menos que o usuário já tenha pedido para
+    // isolá-los via anAcordo acima
+    if(!anAcordo && !showAcordos && isAcordoRow) return false;
     return true;
   });
   if(anSortCol>=0) anApplySort();
