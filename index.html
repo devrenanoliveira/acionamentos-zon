@@ -157,6 +157,9 @@ body.dark .matrix-detail{background:#162032;border-color:rgba(59,130,246,.3)}
 .btn-clear:hover{background:var(--bg)}
 .btn-export{padding:7px 14px;border:none;border-radius:7px;font-size:12px;font-weight:600;color:#fff;background:var(--green);cursor:pointer;white-space:nowrap}
 .btn-export:hover{opacity:.9}
+.btn-acordo{padding:7px 12px;border:1.5px solid var(--amber,#F59E0B);border-radius:7px;font-size:12px;font-weight:600;color:var(--amber,#F59E0B);background:transparent;cursor:pointer;white-space:nowrap;transition:all .15s}
+.btn-acordo:hover{background:rgba(245,158,11,.08)}
+.btn-acordo.active{background:var(--amber,#F59E0B);color:#fff}
 .an-summary{font-size:12px;color:var(--ink3);margin-bottom:10px;display:flex;align-items:center;gap:10px}
 .an-badge{display:inline-block;font-size:11px;font-weight:600;padding:2px 8px;border-radius:4px;background:#FEF2F2;color:var(--red)}
 body.dark .an-badge{background:rgba(220,38,38,.15)}
@@ -509,6 +512,7 @@ let currentTipo = '';   // '' | 'digital' | 'tel'
 let currentMotivo = ''; // '' | código do motivo
 let anFiltered = [], anPage = 1, anSortCol = -1, anSortDir = 1;
 let anInited = false, anLoading = false;
+let anAcordo = false; // filtro: mostrar apenas clientes com acordo
 let selAtraso = null, selValor = null;
 let mMode = 'nao', mSel = null;
 let charts = {};
@@ -708,6 +712,207 @@ function onAssessoriaChange(){
 }
 
 // ═══════════════════════════════════════════
+// NORMALIZAÇÃO DE JSON (compatibilidade com script legado)
+// ═══════════════════════════════════════════
+const _FA_DEF = ['1–30d','31–60d','61–90d','91–120d','121–150d','151–180d','181–360d','361–720d','>720d'];
+const _FV_DEF = ['R$0–100','R$100–300','R$300–500','R$500–1k'];
+const _ST_DEF = {NL:'Não Localizado',NA:'Não Atendeu',AD:'Atendeu e Desligou',PP:'Promessa de Pagamento',
+  RC:'Recado',SF:'Sem Condições Financeiras',RE:'Reagendado',SI:'Sem Interesse',AP:'Alega Pagamento',
+  DE:'Desempregado',DD:'Desconhece Dívida',FA:'Falecido',SM:'SMS/WhatsApp'};
+const _MO_COLORS = {NL:'#6B7280',NA:'#9CA3AF',AD:'#EF4444',PP:'#10B981',RC:'#F59E0B',SF:'#F97316',
+  RE:'#3B82F6',SI:'#DC2626',AP:'#059669',DE:'#8B5CF6',DD:'#EC4899',FA:'#1F2937',SM:'#1D4ED8'};
+const _DEF_COLORS = ['#1D4ED8','#3B82F6','#60A5FA','#7C3AED','#059669','#10B981','#F59E0B','#EF4444',
+  '#6B7280','#EC4899','#F97316','#14B8A6'];
+
+function _normAtraso(arr, faLabels) {
+  if (!arr || !arr.length) return [];
+  // Already normalized if first item has .label and .total
+  if (arr[0].label !== undefined && arr[0].total !== undefined) return arr;
+  return arr.map(item => {
+    const label  = item.fa    || item.label || '';
+    const total  = item.clientes    !== undefined ? item.clientes    : (item.total || 0);
+    const acion  = item.acionados   !== undefined ? item.acionados   : (item.acion  || 0);
+    const nao    = item.nao_acionados!== undefined ? item.nao_acionados: (item.nao  || 0);
+    const pct    = item.cobertura   !== undefined ? item.cobertura   : (item.pct   || 0);
+    const saldo  = item.saldo || 0;
+    return {label, total, acion, nao, pct, saldo};
+  });
+}
+
+function _normValor(arr, fvLabels) {
+  if (!arr || !arr.length) return [];
+  if (arr[0].label !== undefined && arr[0].total !== undefined) return arr;
+  return arr.map(item => {
+    const label  = item.fv    || item.label || '';
+    const total  = item.clientes    !== undefined ? item.clientes    : (item.total || 0);
+    const acion  = item.acionados   !== undefined ? item.acionados   : (item.acion  || 0);
+    const nao    = item.nao_acionados!== undefined ? item.nao_acionados: (item.nao  || 0);
+    const pct    = item.cobertura   !== undefined ? item.cobertura   : (item.pct   || 0);
+    const saldo  = item.saldo || 0;
+    return {label, total, acion, nao, pct, saldo};
+  });
+}
+
+function _normMatrix(raw, faLabels, fvLabels) {
+  if (!raw || !raw.length) return faLabels.map(() => fvLabels.map(() => [0, 0]));
+  // Already 2D array of [nao,tot] pairs?
+  if (Array.isArray(raw[0]) && Array.isArray(raw[0][0])) return raw;
+  // Flat array of objects {fa, fv, clientes, nao_acionados}
+  const matrix = faLabels.map(() => fvLabels.map(() => [0, 0]));
+  raw.forEach(cell => {
+    const fa  = cell.fa || cell.label_fa || '';
+    const fv  = cell.fv || cell.label_fv || '';
+    const ai  = faLabels.indexOf(fa);
+    const vi  = fvLabels.indexOf(fv);
+    if (ai === -1 || vi === -1) return;
+    const tot = cell.clientes     !== undefined ? cell.clientes     : (cell.total || 0);
+    const nao = cell.nao_acionados!== undefined ? cell.nao_acionados: (cell.nao   || 0);
+    matrix[ai][vi] = [nao, tot];
+  });
+  return matrix;
+}
+
+function _normVolume(arr) {
+  if (!arr || !arr.length) return [];
+  // Already normalized if first item has .dia
+  if (arr[0].dia !== undefined) return arr;
+  return arr.map(d => {
+    let dia = '';
+    if (d.data) {
+      const p = d.data.split('-');
+      dia = p.length >= 3 ? (p[2] + '/' + p[1]) : d.data;
+    }
+    let fds = d.fds || false;
+    if (!fds && d.data) {
+      const dt = new Date(d.data + 'T12:00:00');
+      const dw = dt.getDay();
+      fds = dw === 0 || dw === 6;
+    }
+    return {dia, digital: d.digital || 0, tel: d.tel || 0, fds};
+  });
+}
+
+function _normMotivos(arr) {
+  if (!arr || !arr.length) return [];
+  // Already normalized if first item has .name and .value and .color
+  if (arr[0].name !== undefined && arr[0].color !== undefined) return arr;
+  return arr.map((m, i) => {
+    const name  = m.name  || m.motivo || m.label || 'Outro';
+    const value = m.value !== undefined ? m.value : (m.total || 0);
+    const color = m.color || _MO_COLORS[name] || _DEF_COLORS[i % _DEF_COLORS.length];
+    return {name, value, color};
+  });
+}
+
+function _normFreq(raw) {
+  if (!raw) return [];
+  if (Array.isArray(raw)) {
+    if (!raw.length) return [];
+    // Old format: [{qtd:"0", clientes:3430}, ...]
+    if (raw[0].qtd !== undefined)    return raw.map(d => ({n: String(d.qtd), v: d.clientes || 0}));
+    // New format: [{n:"0", v:3430}, ...]
+    if (raw[0].n   !== undefined)    return raw;
+  }
+  // Object {labels:[...], data:[...]}
+  if (raw.labels && raw.data) return raw.labels.map((l, i) => ({n: l, v: raw.data[i] || 0}));
+  return [];
+}
+
+function _normBlock(blk, faLabels, fvLabels) {
+  const totais       = blk.totais || {};
+  const total_clientes = blk.total_clientes !== undefined ? blk.total_clientes
+    : blk.clientes !== undefined ? blk.clientes
+    : (totais.clientes || 0);
+  const acionados    = blk.acionados !== undefined ? blk.acionados : (totais.acionados || 0);
+  const sem_acionamento = blk.sem_acionamento !== undefined ? blk.sem_acionamento
+    : blk.nao_acionados !== undefined ? blk.nao_acionados
+    : totais.nao_acionados !== undefined ? totais.nao_acionados
+    : (total_clientes - acionados);
+  const com_promessa       = blk.com_promessa || 0;
+  const total_acionamentos = blk.total_acionamentos !== undefined ? blk.total_acionamentos
+    : (totais.total_acionamentos || 0);
+
+  const atraso  = _normAtraso(blk.atraso, faLabels);
+  const valor   = _normValor(blk.valor, fvLabels);
+  const matrix  = _normMatrix(blk.matrix, faLabels, fvLabels);
+  const volume  = _normVolume(blk.volume);
+  const motivos = _normMotivos(blk.motivos);
+  const freq    = _normFreq(blk.freq || blk.frequencia);
+  const total_tel = volume.reduce((s, d) => s + (d.tel || 0), 0);
+
+  let max_nao = 0;
+  matrix.forEach(row => row.forEach(([nao]) => { if (nao > max_nao) max_nao = nao; }));
+
+  return {total_clientes, acionados, sem_acionamento, com_promessa, total_acionamentos,
+    total_tel, atraso, valor, matrix, volume, motivos, freq, max_nao,
+    saldo: blk.saldo || 0};
+}
+
+function normalizeD(raw) {
+  const fa_labels        = raw.fa_labels       || _FA_DEF;
+  const fv_labels        = raw.fv_labels       || _FV_DEF;
+  const assessoria_list  = raw.assessoria_list || raw.assessorias || [];
+  const ag_list          = raw.ag_list         || raw.agrupadores || [];
+  const uf_list          = raw.uf_list         || raw.ufs         || [];
+  const status_label     = raw.status_label    || _ST_DEF;
+  const periodo          = raw.periodo || raw.label || raw.mes || '';
+  const atualizado_em    = raw.atualizado_em   || raw.gerado_em   || '';
+
+  const mainBlock = _normBlock(raw, fa_labels, fv_labels);
+
+  // Re-key by_assessoria from name → String(index)
+  let by_assessoria = {};
+  const rawByAs = raw.by_assessoria || {};
+  const firstKey = Object.keys(rawByAs)[0];
+  if (firstKey !== undefined) {
+    const isNumericKey = !isNaN(Number(firstKey));
+    if (isNumericKey) {
+      Object.entries(rawByAs).forEach(([k, blk]) => {
+        by_assessoria[k] = _normBlock(blk, fa_labels, fv_labels);
+      });
+    } else {
+      assessoria_list.forEach((name, idx) => {
+        if (rawByAs[name]) {
+          by_assessoria[String(idx)] = _normBlock(rawByAs[name], fa_labels, fv_labels);
+        }
+      });
+    }
+  }
+
+  return {
+    ...raw,
+    ...mainBlock,
+    fa_labels, fv_labels, assessoria_list, ag_list, uf_list,
+    status_label, periodo, atualizado_em, by_assessoria
+  };
+}
+
+function normalizeAnalitico(raw) {
+  // Handle {rows:[...]} vs flat array
+  const rows = Array.isArray(raw) ? raw : (raw && raw.rows ? raw.rows : []);
+  if (!rows.length) return rows;
+  const sample = rows[0];
+  // Already normalized: r[4] is a number (integer index)
+  if (typeof sample[4] === 'number') return rows;
+  const faLabels = D && D.fa_labels ? D.fa_labels : _FA_DEF;
+  const fvLabels = D && D.fv_labels ? D.fv_labels : _FV_DEF;
+  return rows.map(r => {
+    const out = r.slice();
+    // r[4]: fa label string → integer index
+    if (typeof out[4] === 'string') {
+      const idx = faLabels.indexOf(out[4]);
+      out[4] = idx >= 0 ? idx : 0;
+    }
+    // r[6]: fv label string → integer index
+    if (typeof out[6] === 'string') {
+      const idx = fvLabels.indexOf(out[6]);
+      out[6] = idx >= 0 ? idx : 0;
+    }
+    return out;
+  });
+}
+
+// ═══════════════════════════════════════════
 // CARREGAR MÊS
 // ═══════════════════════════════════════════
 async function loadIndex(){
@@ -733,6 +938,7 @@ async function loadMes(mesId){
   showLoading('Carregando dados de '+ mesId +'…');
   currentAs = null;
   currentTipo = ''; currentMotivo = '';
+  anAcordo = false;
   anInited = false; anLoading = false; ANALITICO = null;
   document.getElementById('an-content').innerHTML = `<div class="an-loading"><div class="spinner"></div>Clique na aba para carregar os dados analíticos…</div>`;
   const activeTab = document.querySelector('.tab-btn.active');
@@ -745,7 +951,7 @@ async function loadMes(mesId){
   try {
     const r = await fetch(`data/${mesId}.json?v=`+Date.now());
     if(!r.ok) throw new Error('HTTP '+r.status);
-    D = await r.json();
+    D = normalizeD(await r.json());
     populateAssessoriaSelect();
     populateMotivoSelect();
     renderAll();
@@ -763,7 +969,7 @@ async function loadAnalitico(){
   try {
     const r = await fetch(`data/${mesId}-analitico.json?v=`+Date.now());
     if(!r.ok) throw new Error('HTTP '+r.status);
-    ANALITICO = await r.json();
+    ANALITICO = normalizeAnalitico(await r.json());
     anInited = true; anLoading = false;
     renderAnalitico();
   } catch(e){
@@ -1173,6 +1379,7 @@ function renderAnalitico(){
         <option value="4">4–6 acionamentos</option>
         <option value="7">7+ acionamentos</option>
       </select>
+      <button id="btn-acordo" class="btn-acordo ${anAcordo?'active':''}" onclick="toggleAcordo()" title="Clientes com acordo de pagamento (Ativo + dias=0)">🤝 Acordo</button>
       <button class="btn-clear" onclick="anClear()">Limpar</button>
       <button class="btn-export" onclick="anExport()">⬇ Excel</button>
     </div>
@@ -1237,6 +1444,8 @@ function anFilter(){
     if(currentTipo === 'digital' && !DIGITAL_MOTIVOS.includes(r[11])) return false;
     if(currentTipo === 'tel'     && !TEL_MOTIVOS.includes(r[11]))     return false;
     if(currentMotivo && r[11] !== currentMotivo) return false;
+    // Filtro de acordo: r[14] = is_acordo (1=acordo; undefined = JSON antigo, trata como 0)
+    if(anAcordo && (r[14] === undefined ? 0 : r[14]) !== 1) return false;
     return true;
   });
   if(anSortCol>=0) anApplySort();
@@ -1255,6 +1464,13 @@ function anApplySort(){
   const c=anSortCol,d=anSortDir;
   anFiltered=[...anFiltered].sort((a,b)=>(a[c]>b[c]?1:a[c]<b[c]?-1:0)*d);
 }
+function toggleAcordo(){
+  anAcordo = !anAcordo;
+  const btn = document.getElementById('btn-acordo');
+  if(btn) btn.classList.toggle('active', anAcordo);
+  anPage=1; anFilter();
+}
+
 function anClear(){
   ['an-search','an-fa','an-fv','an-ag','an-uf','an-tipo','an-as'].forEach(id=>{
     const el=document.getElementById(id);
@@ -1267,6 +1483,10 @@ function anClear(){
     const asEl=document.getElementById('an-as');
     if(asEl) asEl.value=String(currentAs);
   }
+  // Limpar filtro de acordo
+  anAcordo = false;
+  const btnAcordo = document.getElementById('btn-acordo');
+  if(btnAcordo) btnAcordo.classList.remove('active');
   // Limpar também filtros globais tipo/motivo
   currentTipo=''; currentMotivo='';
   const ts=document.getElementById('tipo-select'); if(ts) ts.value='';
