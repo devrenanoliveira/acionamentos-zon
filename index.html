@@ -326,6 +326,8 @@ body.dark .filter-notice{background:rgba(59,130,246,.08)}
     </select>
   </div>
   <span class="fb-active" id="fb-active-badge" style="display:none"></span>
+  <div class="fb-sep"></div>
+  <button id="btn-show-acordos" class="btn-acordo" onclick="toggleShowAcordos()" title="Incluir/excluir clientes em acordo ativo das métricas">🤝 Acordos</button>
   <button class="fb-clear" onclick="clearAcionFilters()">Limpar filtros</button>
 </div>
 
@@ -516,7 +518,8 @@ let currentTipo = '';   // '' | 'digital' | 'tel'
 let currentMotivo = ''; // '' | código do motivo
 let anFiltered = [], anPage = 1, anSortCol = -1, anSortDir = 1;
 let anInited = false, anLoading = false;
-let anAcordo = false; // filtro: mostrar apenas clientes com acordo
+let anAcordo = false; // filtro: mostrar apenas clientes com acordo (aba Analítico)
+let showAcordos = false; // toggle: incluir clientes em acordo nas métricas gerais
 let selAtraso = null, selValor = null;
 let mMode = 'nao', mSel = null;
 let charts = {};
@@ -690,6 +693,7 @@ function computeFilteredMatrix(){
   const asFilter = currentAs !== null ? currentAs : null;
   ANALITICO.forEach(r=>{
     if(asFilter !== null && r[13] !== undefined && r[13] !== asFilter) return;
+    if(!showAcordos && r[14] === 1) return; // excluir clientes em acordo
     const fi = r[4], vi = r[6];
     if(fi < 0 || fi >= nFa || vi < 0 || vi >= nFv) return;
     matrix[fi][vi][1]++;
@@ -716,8 +720,31 @@ function getActiveMatrix(){
 // Calcula max_nao da matriz ativa (para escala de cor)
 function getActiveMaxNao(matrix){
   let maxN = 0;
-  matrix.forEach(row=>row.forEach(([nao])=>{ if(nao>maxN) maxN=nao; }));
+  matrix.forEach((row,ai)=>{
+    if(!showAcordos && D && D.fa_labels && D.fa_labels[ai] === 'Acordo') return;
+    row.forEach(([nao])=>{ if(nao>maxN) maxN=nao; });
+  });
   return maxN || 1;
+}
+
+// Toggle: incluir/excluir acordos das métricas gerais
+function toggleShowAcordos(){
+  showAcordos = !showAcordos;
+  const btn = document.getElementById('btn-show-acordos');
+  if(btn) btn.classList.toggle('active', showAcordos);
+  // Re-renderizar abas afetadas
+  Object.values(charts).forEach(c=>c.destroy());
+  charts = {};
+  renderGeral();
+  renderAtraso();
+  renderValor();
+  renderMatrix();
+}
+
+// Retorna ad.atraso filtrado (sem "Acordo") conforme o toggle showAcordos
+function getDisplayAtraso(){
+  const ad = getAD();
+  return showAcordos ? ad.atraso : ad.atraso.filter(r => r.label !== 'Acordo');
 }
 
 // ═══════════════════════════════════════════
@@ -1017,6 +1044,9 @@ async function loadMes(mesId){
   currentAs = null;
   currentTipo = ''; currentMotivo = '';
   anAcordo = false;
+  showAcordos = false;
+  const btnSA = document.getElementById('btn-show-acordos');
+  if(btnSA) btnSA.classList.remove('active');
   anInited = false; anLoading = false; ANALITICO = null;
   document.getElementById('an-content').innerHTML = `<div class="an-loading"><div class="spinner"></div>Clique na aba para carregar os dados analíticos…</div>`;
   const activeTab = document.querySelector('.tab-btn.active');
@@ -1093,29 +1123,36 @@ function renderAll(){
 // ══ GERAL ══
 function renderGeral(){
   const ad = getAD();
+  // Subtrai clientes em acordo das métricas se toggle desativado
+  const acordoEntry = !showAcordos ? (ad.atraso||[]).find(r=>r.label==='Acordo') : null;
+  const ef_total = ad.total_clientes - (acordoEntry ? acordoEntry.total : 0);
+  const ef_acion = ad.acionados     - (acordoEntry ? acordoEntry.acion  : 0);
+  const ef_nao   = ad.sem_acionamento - (acordoEntry ? acordoEntry.nao  : 0);
+
   document.getElementById('kpi-geral').innerHTML =
-    kpiHtml('Total clientes',fmt(ad.total_clientes),'','') +
-    kpiHtml('Acionados',fmt(ad.acionados),'blue',`${((ad.acionados/ad.total_clientes)*100).toFixed(1)}% da carteira`) +
-    kpiHtml('Sem acionamento',fmt(ad.sem_acionamento),'red',`${((ad.sem_acionamento/ad.total_clientes)*100).toFixed(1)}% da carteira`) +
-    kpiHtml('Com promessa',fmt(ad.com_promessa),'green',`${((ad.com_promessa/Math.max(ad.acionados,1))*100).toFixed(1)}% dos acionados`) +
+    kpiHtml('Total clientes',fmt(ef_total),'',acordoEntry?`${fmt(acordoEntry.total)} em acordo excluídos`:'') +
+    kpiHtml('Acionados',fmt(ef_acion),'blue',`${(ef_total>0?(ef_acion/ef_total)*100:0).toFixed(1)}% da carteira`) +
+    kpiHtml('Sem acionamento',fmt(ef_nao),'red',`${(ef_total>0?(ef_nao/ef_total)*100:0).toFixed(1)}% da carteira`) +
+    kpiHtml('Com promessa',fmt(ad.com_promessa),'green',`${((ad.com_promessa/Math.max(ef_acion,1))*100).toFixed(1)}% dos acionados`) +
     kpiHtml('Acionamentos',fmt(ad.total_acionamentos),'',D.periodo);
 
-  const pAcion = (ad.acionados/ad.total_clientes*100).toFixed(1);
-  const pSem   = (ad.sem_acionamento/ad.total_clientes*100).toFixed(1);
+  const pAcion = (ef_total>0?ef_acion/ef_total*100:0).toFixed(1);
+  const pSem   = (ef_total>0?ef_nao/ef_total*100:0).toFixed(1);
   document.getElementById('donut-legend').innerHTML = `
     <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">
       <span style="width:10px;height:10px;border-radius:2px;background:#1D4ED8;flex-shrink:0;display:inline-block"></span>
       <span style="font-size:12px;color:#64748B;flex:1">Acionados</span>
-      <span style="font-size:14px;font-weight:700;color:#1D4ED8">${fmt(ad.acionados)}</span>
+      <span style="font-size:14px;font-weight:700;color:#1D4ED8">${fmt(ef_acion)}</span>
       <span style="font-size:11px;color:#64748B;width:36px;text-align:right">${pAcion}%</span>
     </div>
     <div style="display:flex;align-items:center;gap:6px;margin-bottom:10px">
       <span style="width:10px;height:10px;border-radius:2px;background:#EF4444;flex-shrink:0;display:inline-block"></span>
       <span style="font-size:12px;color:#64748B;flex:1">Sem contato</span>
-      <span style="font-size:14px;font-weight:700;color:#DC2626">${fmt(ad.sem_acionamento)}</span>
+      <span style="font-size:14px;font-weight:700;color:#DC2626">${fmt(ef_nao)}</span>
       <span style="font-size:11px;color:#64748B;width:36px;text-align:right">${pSem}%</span>
     </div>
-    <div style="font-size:11px;color:#64748B;line-height:1.7;border-top:1px solid #F1F5F9;padding-top:8px">
+    ${acordoEntry?`<div style="font-size:11px;color:#F59E0B;line-height:1.7;border-top:1px solid #F1F5F9;padding-top:8px">🤝 ${fmt(acordoEntry.total)} clientes em acordo excluídos das métricas <a href="#" onclick="toggleShowAcordos();return false;" style="color:#F59E0B;text-decoration:underline">Incluir</a></div>`:''}
+    <div style="font-size:11px;color:#64748B;line-height:1.7;${acordoEntry?'':'border-top:1px solid #F1F5F9;padding-top:8px'}">
       Atualizado em: <strong style="color:#0F172A">${D.atualizado_em}</strong>
     </div>`;
 
@@ -1125,7 +1162,7 @@ function renderGeral(){
 
   charts.donut = new Chart(document.getElementById('chart-donut'),{
     type:'doughnut',
-    data:{datasets:[{data:[ad.acionados,ad.sem_acionamento],backgroundColor:['#1D4ED8','#EF4444'],borderWidth:0}]},
+    data:{datasets:[{data:[ef_acion,ef_nao],backgroundColor:['#1D4ED8','#EF4444'],borderWidth:0}]},
     options:{responsive:true,maintainAspectRatio:false,cutout:'62%',plugins:{legend:{display:false},tooltip:{enabled:false}}}
   });
 
@@ -1162,8 +1199,8 @@ function renderGeral(){
 
 // ══ ATRASO ══
 function renderAtraso(){
-  const ad = getAD();
-  const d = ad.atraso;
+  const d = getDisplayAtraso(); // respeita o toggle showAcordos
+  if(!d || !d.length) return;
   const piorIdx = d.reduce((mi,r,i)=>r.pct<d[mi].pct?i:mi,0);
   const pior = d[piorIdx];
   const naoTotal = d.reduce((s,r)=>s+r.nao,0);
@@ -1186,7 +1223,24 @@ function renderAtraso(){
 // ══ VALOR ══
 function renderValor(){
   const ad = getAD();
-  const d = ad.valor;
+  let d = ad.valor;
+  // Quando !showAcordos, subtrair clientes em acordo de cada faixa de valor
+  if(!showAcordos && ad.matrix && D){
+    const faAcordoIdx = typeof D.fa_acordo_idx === 'number' ? D.fa_acordo_idx
+      : (D.fa_labels||[]).indexOf('Acordo');
+    if(faAcordoIdx >= 0 && ad.matrix[faAcordoIdx]){
+      const acordoRow = ad.matrix[faAcordoIdx];
+      d = d.map((r,vi)=>{
+        const [acNao, acTot] = acordoRow[vi] || [0,0];
+        const newTot  = Math.max(0, r.total - acTot);
+        const newNao  = Math.max(0, r.nao   - acNao);
+        const newAcion = newTot - newNao;
+        const newPct  = newTot > 0 ? parseFloat((newAcion/newTot*100).toFixed(1)) : (r.pct || 0);
+        return {...r, total:newTot, acion:newAcion, nao:newNao, pct:newPct};
+      });
+    }
+  }
+  if(!d || !d.length) return;
   const piorIdx = d.reduce((mi,r,i)=>r.pct<d[mi].pct?i:mi,0);
   const pior = d[piorIdx];
   const melhorIdx = d.reduce((mi,r,i)=>r.pct>d[mi].pct?i:mi,0);
@@ -1199,10 +1253,11 @@ function renderValor(){
     kpiHtml('Melhor cobertura',melhor.pct.toFixed(1)+'%','green',`faixa ${melhor.label}`) +
     kpiHtml('Menor faixa s/cont.',menor?fmt(menor.nao):'0','amber',menor?`clientes ${menor.label} restantes`:'');
 
+  const ef_nao_total = d.reduce((s,r)=>s+r.nao,0);
   document.getElementById('insight-valor').innerHTML =
     `O menor índice é <strong>${pior.pct.toFixed(1)}%</strong> em ${pior.label} — ${fmt(pior.nao)} clientes sem contato.`;
   document.getElementById('insight-valor2').innerHTML =
-    `<strong>${fmt(ad.sem_acionamento)} clientes</strong> na carteira sem nenhum acionamento no período.`;
+    `<strong>${fmt(ef_nao_total)} clientes</strong> na carteira sem nenhum acionamento no período.`;
 
   renderSegTable('seg-valor',d,'clickValor',null);
 }
@@ -1230,12 +1285,15 @@ function renderSegTable(id, data, clickFn, selIdx){
 
 function clickAtraso(i){
   const ad = getAD();
+  const dispAtraso = getDisplayAtraso();
   if(selAtraso===i){closeDrill('atraso');return;}
   selAtraso=i;
-  renderSegTable('seg-atraso',ad.atraso,'clickAtraso',i);
-  const row=ad.atraso[i];
+  renderSegTable('seg-atraso',dispAtraso,'clickAtraso',i);
+  const row=dispAtraso[i];
+  // Mapa de índice display → índice real na matriz (necessário quando "Acordo" está visível)
+  const realIdx = ad.atraso.indexOf(row);
   const activeMatrix = getActiveMatrix();
-  const drill=activeMatrix[i].map(([nao,tot],vi)=>({
+  const drill=activeMatrix[realIdx >= 0 ? realIdx : i].map(([nao,tot],vi)=>({
     label:D.fv_labels[vi],total:tot,acion:tot-nao,nao,
     pct:tot>0?parseFloat(((tot-nao)/tot*100).toFixed(1)):null
   })).filter(d=>d.total>0);
@@ -1256,10 +1314,14 @@ function clickValor(i){
   renderSegTable('seg-valor',ad.valor,'clickValor',i);
   const row=ad.valor[i];
   const activeMatrix = getActiveMatrix();
-  const drill=ad.atraso.map((a,ai)=>({
-    label:a.label,total:activeMatrix[ai][i][1],acion:activeMatrix[ai][i][1]-activeMatrix[ai][i][0],nao:activeMatrix[ai][i][0],
-    pct:activeMatrix[ai][i][1]>0?parseFloat(((activeMatrix[ai][i][1]-activeMatrix[ai][i][0])/activeMatrix[ai][i][1]*100).toFixed(1)):null
-  })).filter(d=>d.total>0);
+  const dispAtraso2 = getDisplayAtraso();
+  const drill=dispAtraso2.map((a)=>{
+    const ai = ad.atraso.indexOf(a);
+    const mat = ai >= 0 ? activeMatrix[ai] : null;
+    if(!mat) return null;
+    return {label:a.label,total:mat[i][1],acion:mat[i][1]-mat[i][0],nao:mat[i][0],
+      pct:mat[i][1]>0?parseFloat(((mat[i][1]-mat[i][0])/mat[i][1]*100).toFixed(1)):null};
+  }).filter(d=>d&&d.total>0);
   document.getElementById('drill-valor-title').textContent=row.label+' — por faixa de atraso';
   document.getElementById('drill-valor-kpis').innerHTML=
     kpiHtml('Total',fmt(row.total))+kpiHtml('Acionados',fmt(row.acion),'blue')+
@@ -1272,7 +1334,7 @@ function clickValor(i){
 
 function closeDrill(w){
   const ad = getAD();
-  if(w==='atraso'){selAtraso=null;document.getElementById('drill-atraso').classList.remove('open');renderSegTable('seg-atraso',ad.atraso,'clickAtraso',null);}
+  if(w==='atraso'){selAtraso=null;document.getElementById('drill-atraso').classList.remove('open');renderSegTable('seg-atraso',getDisplayAtraso(),'clickAtraso',null);}
   if(w==='valor'){selValor=null;document.getElementById('drill-valor').classList.remove('open');renderSegTable('seg-valor',ad.valor,'clickValor',null);}
 }
 
@@ -1285,7 +1347,8 @@ function renderMatrix(){
   const filterActive = !!(currentTipo || currentMotivo);
   const filteredMatrix = filterActive && anInited ? computeFilteredMatrix() : null;
   const matrix = filteredMatrix || ad.matrix;
-  const maxN = filteredMatrix ? getActiveMaxNao(matrix) : (ad.max_nao||1);
+  // Usar getActiveMaxNao sempre (já respeita showAcordos); fallback ad.max_nao só se showAcordos=true
+  const maxN = (filteredMatrix || !showAcordos) ? getActiveMaxNao(matrix) : (ad.max_nao||1);
   // Aviso de filtro ativo na matriz
   const notice = document.getElementById('matrix-filter-notice');
   if(notice){
@@ -1306,6 +1369,8 @@ function renderMatrix(){
   VAL_LABELS.forEach(v=>{h+=`<th>${v}</th>`;});
   h+='</tr></thead><tbody>';
   matrix.forEach((row,ai)=>{
+    // Ocultar linha "Acordo" quando toggle showAcordos estiver desativado
+    if(!showAcordos && D.fa_labels && D.fa_labels[ai] === 'Acordo') return;
     h+=`<tr><td class="rh">${ad.atraso[ai]?ad.atraso[ai].label:D.fa_labels[ai]}</td>`;
     row.forEach(([nao,tot],vi)=>{
       const s=cellStyle(nao,tot,maxN);
