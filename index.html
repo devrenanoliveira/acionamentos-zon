@@ -595,13 +595,23 @@ function onMotivoChange(){
 function populateMotivoSelect(){
   const sel = document.getElementById('motivo-select');
   if(!sel) return;
-  const labels = D&&D.status_label ? D.status_label : {};
-  let motivos;
-  if(currentTipo === 'digital')     motivos = DIGITAL_MOTIVOS;
-  else if(currentTipo === 'tel')    motivos = TEL_MOTIVOS;
-  else                              motivos = [...DIGITAL_MOTIVOS, ...TEL_MOTIVOS];
-  sel.innerHTML = '<option value="">Todos</option>' +
-    motivos.map(cod=>`<option value="${cod}">${labels[cod]||cod}</option>`).join('');
+  // Prioridade: usar motivos reais do JSON (ex: "Não Útil"/"Útil")
+  // Fallback: códigos padrão de 2 letras (quando D.motivos não existe)
+  const mData = D && D.motivos && D.motivos.length ? D.motivos : null;
+  let opts = '';
+  if(mData) {
+    // D.motivos vem de acionamentos telefônicos → exibe apenas quando tipo=tel ou todos
+    if(currentTipo !== 'digital') {
+      opts = mData.map(m=>`<option value="${m.name}">${m.name}</option>`).join('');
+    }
+  } else {
+    const labels = D&&D.status_label ? D.status_label : {};
+    const codes  = currentTipo === 'digital' ? DIGITAL_MOTIVOS
+                 : currentTipo === 'tel'     ? TEL_MOTIVOS
+                 :                            [...DIGITAL_MOTIVOS,...TEL_MOTIVOS];
+    opts = codes.map(cod=>`<option value="${cod}">${labels[cod]||cod}</option>`).join('');
+  }
+  sel.innerHTML = '<option value="">Todos</option>' + opts;
   sel.value = '';
 }
 function updateFbBadge(){
@@ -1440,9 +1450,15 @@ function anFilter(){
     if(qtd==='7' && r[10]<7) return false;
     // r[13] = as_idx (pode ser undefined em dados antigos)
     if(asFilter!=='' && asFilter!==undefined && r[13]!==undefined && String(r[13])!==asFilter) return false;
-    // Filtros globais de tipo/motivo (r[11] = UltimoStatus)
-    if(currentTipo === 'digital' && !DIGITAL_MOTIVOS.includes(r[11])) return false;
-    if(currentTipo === 'tel'     && !TEL_MOTIVOS.includes(r[11]))     return false;
+    // Filtros globais de tipo/motivo
+    // r[15] = qtd_tel (acionamentos telefônicos); r[10]-r[15] = qtd_digital
+    // Campo 15 presente apenas em JSONs gerados com o script atualizado
+    if(r[15] !== undefined) {
+      const qtdTel = r[15], qtdDig = r[10] - qtdTel;
+      if(currentTipo === 'digital' && qtdDig === 0) return false;
+      if(currentTipo === 'tel'     && qtdTel === 0) return false;
+    }
+    // Canal/Motivo: r[11] = último motivo registrado para o cliente
     if(currentMotivo && r[11] !== currentMotivo) return false;
     // Filtro de acordo: r[14] = is_acordo (1=acordo; undefined = JSON antigo, trata como 0)
     if(anAcordo && (r[14] === undefined ? 0 : r[14]) !== 1) return false;
@@ -1558,10 +1574,13 @@ function anExport(){
   const FA_LABELS=D.fa_labels||[],FV_LABELS=D.fv_labels||[],AG_LIST=D.ag_list||[],UF_LIST=D.uf_list||[],AS_LIST=D.assessoria_list||[];
   const STATUS_LABEL=D.status_label||{};
   const showAs = AS_LIST.length > 1;
-  const headers=['CPF/CNPJ','Nome','Tipo','Dias Atraso','Faixa Atraso','Saldo (R$)','Faixa Valor','Agrupador','UF','Cidade','Qtd Acionamentos','Último Status','Status + Frequente'];
+  const headers=['CPF/CNPJ','Nome','Tipo','Dias Atraso','Faixa Atraso','Saldo (R$)','Faixa Valor','Agrupador','UF','Cidade','Qtd Acionamentos','Qtd Tel','Qtd Digital','Último Status','Status + Frequente','Acordo'];
   if(showAs) headers.push('Assessoria');
   const rows=anFiltered.map(r=>{
-    const row=[r[0],r[1],r[2]==='J'?'PJ':'PF',r[3],FA_LABELS[r[4]]||r[4],r[5],FV_LABELS[r[6]]||r[6],AG_LIST[r[7]]||'',UF_LIST[r[8]]||'',r[9],r[10],STATUS_LABEL[r[11]]||r[11]||'',STATUS_LABEL[r[12]]||r[12]||''];
+    const qtdTel = r[15]!==undefined ? r[15] : '';
+    const qtdDig = r[15]!==undefined ? r[10]-r[15] : '';
+    const acordo  = r[14]!==undefined ? (r[14]===1?'Sim':'Não') : '';
+    const row=[r[0],r[1],r[2]==='J'?'PJ':'PF',r[3],FA_LABELS[r[4]]||r[4],r[5],FV_LABELS[r[6]]||r[6],AG_LIST[r[7]]||'',UF_LIST[r[8]]||'',r[9],r[10],qtdTel,qtdDig,STATUS_LABEL[r[11]]||r[11]||'',STATUS_LABEL[r[12]]||r[12]||'',acordo];
     if(showAs) row.push(AS_LIST[r[13]]||'');
     return row;
   });
