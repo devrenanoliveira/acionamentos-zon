@@ -596,15 +596,11 @@ function onMotivoChange(){
 function populateMotivoSelect(){
   const sel = document.getElementById('motivo-select');
   if(!sel) return;
-  // Prioridade: usar motivos reais do JSON (ex: "Não Útil"/"Útil")
-  // Fallback: códigos padrão de 2 letras (quando D.motivos não existe)
+  // D.motivos vem de "Motivo Contato" (todos os canais) — exibe sempre
   const mData = D && D.motivos && D.motivos.length ? D.motivos : null;
   let opts = '';
   if(mData) {
-    // D.motivos vem de acionamentos telefônicos → exibe apenas quando tipo=tel ou todos
-    if(currentTipo !== 'digital') {
-      opts = mData.map(m=>`<option value="${m.name}">${m.name}</option>`).join('');
-    }
+    opts = mData.map(m=>`<option value="${m.name}">${m.name}</option>`).join('');
   } else {
     const labels = D&&D.status_label ? D.status_label : {};
     const codes  = currentTipo === 'digital' ? DIGITAL_MOTIVOS
@@ -621,10 +617,9 @@ function updateFbBadge(){
   const active = currentTipo || currentMotivo;
   b.style.display = active ? '' : 'none';
   if(active){
-    const labels = D&&D.status_label ? D.status_label : {};
     const parts = [];
     if(currentTipo) parts.push(currentTipo==='digital' ? 'Ação Digital' : 'Contato Telefônico');
-    if(currentMotivo) parts.push(labels[currentMotivo]||currentMotivo);
+    if(currentMotivo) parts.push(currentMotivo); // valor já é o nome completo de D.motivos
     b.textContent = parts.join(' · ');
   }
   // Mostrar avisos nas abas consolidadas quando filtro está ativo
@@ -1293,10 +1288,9 @@ function renderMatrix(){
       notice.textContent = anLoading ? '⏳ Carregando dados para aplicar filtro na matriz…' : '⚠ Dados analíticos não carregados. Troque para a aba Analítico para ativar o filtro.';
     } else if(filterActive && filteredMatrix){
       notice.style.display='';
-      const labels=D&&D.status_label?D.status_label:{};
       const parts=[];
       if(currentTipo) parts.push(currentTipo==='digital'?'Ação Digital':'Contato Telefônico');
-      if(currentMotivo) parts.push(labels[currentMotivo]||currentMotivo);
+      if(currentMotivo) parts.push(currentMotivo); // já é o nome completo
       notice.textContent = '🔍 Matriz filtrada por: '+parts.join(' · ')+' (calculado dinamicamente)';
     } else {
       notice.style.display='none';
