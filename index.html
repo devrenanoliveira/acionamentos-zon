@@ -1538,9 +1538,13 @@ function renderVolume(){
       datasets: volumeDatasets
     },
     options:{responsive:true,maintainAspectRatio:false,
+      interaction:{mode:'index',intersect:false}, // mostra TODAS as séries do dia no tooltip, não só a mais próxima do cursor
       plugins:{legend:{display:false},tooltip:{...TT,callbacks:{
         title:ctx=>'Dia '+ctx[0].label,
-        label:ctx=>` ${ctx.dataset.label}: ${fmt(ctx.parsed.y)}`
+        label:ctx=>` ${ctx.dataset.label}: ${fmt(ctx.parsed.y)}`,
+        footer:ctxArr=>volumeDatasets.length>1
+          ? `Total do dia: ${fmt(ctxArr.reduce((s,c)=>s+c.parsed.y,0))}`
+          : ''
       }}},
       scales:{x:{grid:{display:false},stacked:true,ticks:{color:MUTED,font:{size:9},maxRotation:45}},
               y:{grid:{color:GRID},stacked:true,ticks:{color:MUTED,font:{size:9},callback:v=>v>=1000?`${(v/1000).toFixed(0)}k`:v}}}
