@@ -232,6 +232,10 @@ body.dark .filter-notice{background:rgba(59,130,246,.08)}
 .sub-btn{padding:6px 16px;font-size:12px;border:1.5px solid var(--border);border-radius:6px;background:var(--card);color:var(--ink3);cursor:pointer;font-weight:500;transition:all .15s}
 .sub-btn:hover{border-color:var(--blue-dark);color:var(--blue-dark)}
 .sub-btn.active{background:var(--navy);color:#fff;border-color:var(--navy);font-weight:600}
+.cv-toggle{display:flex;gap:0;border:1.5px solid var(--border);border-radius:7px;overflow:hidden}
+.cv-toggle-btn{padding:6px 14px;font-size:12px;border:none;background:var(--card);color:var(--ink3);cursor:pointer;font-weight:600;transition:all .15s}
+.cv-toggle-btn:first-child{border-right:1.5px solid var(--border)}
+.cv-toggle-btn.active{background:var(--gold,#F59E0B);color:#fff}
 .sub-panel{display:none}
 .sub-panel.active{display:block}
 /* CARTEIRA FAIXA ROWS */
@@ -438,10 +442,16 @@ body.dark .filter-notice{background:rgba(59,130,246,.08)}
 
 <!-- ══ CARTEIRA ══ -->
 <div id="panel-carteira" class="panel active">
-  <div class="sub-tabs">
-    <button class="sub-btn active" onclick="showCarteiraSub('atraso',this)">Faixas de Atraso</button>
-    <button class="sub-btn" onclick="showCarteiraSub('valor',this)">Faixas de Valor</button>
-    <button class="sub-btn" onclick="showCarteiraSub('segmento',this)">Segmentos</button>
+  <div class="sub-tabs" style="justify-content:space-between;align-items:center">
+    <div style="display:flex;gap:6px;flex-wrap:wrap">
+      <button class="sub-btn active" onclick="showCarteiraSub('atraso',this)">Faixas de Atraso</button>
+      <button class="sub-btn" onclick="showCarteiraSub('valor',this)">Faixas de Valor</button>
+      <button class="sub-btn" onclick="showCarteiraSub('segmento',this)">Segmentos</button>
+    </div>
+    <div class="cv-toggle" id="cv-toggle">
+      <button id="cv-btn-qtd" class="cv-toggle-btn active" onclick="setCarteiraViewMode('qtd')">🔢 Quantidade</button>
+      <button id="cv-btn-valor" class="cv-toggle-btn" onclick="setCarteiraViewMode('valor')">💰 Valor (R$)</button>
+    </div>
   </div>
 
   <!-- Sub: Faixas de Atraso -->
@@ -1051,6 +1061,10 @@ async function loadMes(mesId){
   showAcordos = false;
   const btnSA = document.getElementById('btn-show-acordos');
   if(btnSA) btnSA.classList.remove('active');
+  carteiraViewMode = 'qtd';
+  const cvQ = document.getElementById('cv-btn-qtd'), cvV = document.getElementById('cv-btn-valor');
+  if(cvQ) cvQ.classList.add('active');
+  if(cvV) cvV.classList.remove('active');
   anInited = false; anLoading = false; ANALITICO = null;
   document.getElementById('an-content').innerHTML = `<div class="an-loading"><div class="spinner"></div>Clique na aba para carregar os dados analíticos…</div>`;
   const activeTab = document.querySelector('.tab-btn.active');
@@ -1799,6 +1813,7 @@ const SEG_DEFS = [
   {label:'Loss (H–J)', faixas:[6,7,8],   cor:'#7C3AED', desc:'181+ dias'},
 ];
 let cChartAtraso=null, cChartValor=null, cChartSeg=null;
+let carteiraViewMode = 'qtd'; // 'qtd' | 'valor'
 
 function showCarteiraSub(id, btn){
   document.querySelectorAll('#panel-carteira .sub-panel').forEach(p=>p.classList.remove('active'));
@@ -1807,52 +1822,79 @@ function showCarteiraSub(id, btn){
   if(btn) btn.classList.add('active');
 }
 
+// Formata em R$ compacto: milhões/mil quando o valor é grande, senão valor cheio
+function fmtR$(v){ return 'R$ ' + fmtSaldo(v); }
+
+function setCarteiraViewMode(mode){
+  carteiraViewMode = mode;
+  document.getElementById('cv-btn-qtd').classList.toggle('active', mode==='qtd');
+  document.getElementById('cv-btn-valor').classList.toggle('active', mode==='valor');
+  renderCarteira();
+}
+
 function renderCarteira(){
   if(!D) return;
   const ad = getAD();
   const atraso = ad.atraso || [];
   const valor  = ad.valor  || [];
-  const total  = atraso.reduce((s,f)=>s+f.total,0) || 1;
+  const isValorMode = carteiraViewMode === 'valor';
+  // Métrica ativa por faixa: quantidade de clientes ou soma de saldo (respeita a
+  // regra Saldo Contábil > 0 → senão Saldo Total em Atraso/Atualizado, já aplicada no Python)
+  const metric   = f => isValorMode ? (f.saldo||0) : f.total;
+  const fmtM     = v => isValorMode ? fmtR$(v) : fmt(v);
+  const unidLbl  = isValorMode ? 'da carteira' : 'clientes';
+
+  const total  = atraso.reduce((s,f)=>s+metric(f),0) || 1;
 
   // ── Sub 1: Faixas de Atraso ──────────────────────────────────
-  const preTotal  = atraso.slice(0,6).reduce((s,f)=>s+f.total,0);
-  const lossTotal = atraso.slice(6).reduce((s,f)=>s+f.total,0);
-  const maiorFa   = atraso.reduce((a,f)=>f.total>a.total?f:a,{total:0,label:'—'});
+  const preTotal  = atraso.slice(0,6).reduce((s,f)=>s+metric(f),0);
+  const lossTotal = atraso.slice(6).reduce((s,f)=>s+metric(f),0);
+  const maiorFa   = atraso.reduce((a,f)=>metric(f)>metric(a)?f:a,{total:0,saldo:0,label:'—'});
 
   document.getElementById('kpi-c-atraso').innerHTML =
-    kpiHtml('Total carteira',    fmt(total),              'blue',   '') +
-    kpiHtml('Pré-Prejuízo (B–G)',fmt(preTotal),           'amber',  (preTotal/total*100).toFixed(1)+'% da carteira') +
-    kpiHtml('Loss (H–J)',         fmt(lossTotal),          'red',    (lossTotal/total*100).toFixed(1)+'% da carteira') +
-    kpiHtml('Maior faixa',        maiorFa.label,           'purple', fmt(maiorFa.total)+' clientes');
+    kpiHtml('Total carteira',    fmtM(total),             'blue',   '') +
+    kpiHtml('Pré-Prejuízo (B–G)',fmtM(preTotal),          'amber',  (preTotal/total*100).toFixed(1)+'% da carteira') +
+    kpiHtml('Loss (H–J)',         fmtM(lossTotal),         'red',    (lossTotal/total*100).toFixed(1)+'% da carteira') +
+    kpiHtml('Maior faixa',        maiorFa.label,           'purple', fmtM(metric(maiorFa)));
 
-  const maxQtd = Math.max(...atraso.map(f=>f.total));
+  const maxQtd = Math.max(...atraso.map(metric));
   const atrasoAtivos = atraso.filter(f=>f.total>0);
   document.getElementById('c-atraso-bars').innerHTML = atrasoAtivos.map((f,i)=>{
-    const barW = (f.total/maxQtd*100).toFixed(1);
-    const pct  = (f.total/total*100).toFixed(1);
+    const barW = (metric(f)/maxQtd*100).toFixed(1);
+    const pct  = (metric(f)/total*100).toFixed(1);
     const cor  = C_COLORS[i % C_COLORS.length];
-    return `<div class="cf-row" style="grid-template-columns:110px 1fr 50px 70px">
+    return `<div class="cf-row" style="grid-template-columns:110px 1fr 50px 110px">
       <span class="cf-label">${f.label}</span>
       <div class="cf-bar-bg"><div class="cf-bar-fill" style="width:${barW}%;background:${cor}"></div></div>
       <span class="cf-val" style="color:${cor};font-size:11px">${pct}%</span>
-      <span class="cf-sub">${fmt(f.total)}</span>
+      <span class="cf-sub">${fmtM(metric(f))}</span>
     </div>`;
   }).join('');
 
   // Tabela detalhada por faixa de atraso
   document.getElementById('c-atraso-table').innerHTML = `
-    <div class="cf-header" style="grid-template-columns:110px 80px 80px 80px 80px 80px">
-      <span>Faixa</span><span class="r">Clientes</span><span class="r">% Carteira</span>
+    <div class="cf-header" style="grid-template-columns:110px 110px 80px 80px 80px 80px">
+      <span>Faixa</span><span class="r">${isValorMode?'Saldo (R$)':'Clientes'}</span><span class="r">% Carteira</span>
       <span class="r">Acionados</span><span class="r">Não acion.</span><span class="r">Cobertura</span>
     </div>` + atraso.filter(f=>f.total>0).map((f,i)=>`
-    <div class="cf-row" style="grid-template-columns:110px 80px 80px 80px 80px 80px">
+    <div class="cf-row" style="grid-template-columns:110px 110px 80px 80px 80px 80px">
       <span class="cf-label" style="color:${C_COLORS[i%C_COLORS.length]}">${f.label}</span>
-      <span class="cf-val">${fmt(f.total)}</span>
-      <span class="cf-val">${(f.total/total*100).toFixed(1)}%</span>
+      <span class="cf-val">${fmtM(metric(f))}</span>
+      <span class="cf-val">${(metric(f)/total*100).toFixed(1)}%</span>
       <span class="cf-val" style="color:#059669">${fmt(f.acion)}</span>
       <span class="cf-val" style="color:${f.nao>0?'#DC2626':'#059669'}">${fmt(f.nao)}</span>
       <span class="cf-val"><span class="${chipClass(f.pct)}">${f.pct.toFixed(1)}%</span></span>
     </div>`).join('');
+  if(isValorMode){
+    const note = document.getElementById('c-atraso-table-note');
+    if(!note){
+      document.getElementById('c-atraso-table').insertAdjacentHTML('afterend',
+        '<div id="c-atraso-table-note" style="font-size:11px;color:#94A3B8;margin-top:6px">Acionados / Não acion. seguem em quantidade de clientes (contagem), não em R$.</div>');
+    }
+  } else {
+    const note = document.getElementById('c-atraso-table-note');
+    if(note) note.remove();
+  }
 
   // Chart donut atraso
   if(cChartAtraso){ cChartAtraso.destroy(); cChartAtraso=null; }
@@ -1862,50 +1904,50 @@ function renderCarteira(){
     type:'doughnut',
     data:{
       labels: atrasoAtivos.map(f=>f.label),
-      datasets:[{data:atrasoAtivos.map(f=>f.total), backgroundColor:atrasoAtivos.map((_,i)=>C_COLORS[i%C_COLORS.length]), borderWidth:2, borderColor:'#fff'}]
+      datasets:[{data:atrasoAtivos.map(metric), backgroundColor:atrasoAtivos.map((_,i)=>C_COLORS[i%C_COLORS.length]), borderWidth:2, borderColor:'#fff'}]
     },
     options:{responsive:true,maintainAspectRatio:false,cutout:'52%',
       plugins:{legend:{display:false},
-        tooltip:{...TT,callbacks:{label:ctx=>' '+fmt(ctx.parsed)+' clientes ('+((ctx.parsed/total)*100).toFixed(1)+'%)'}}}
+        tooltip:{...TT,callbacks:{label:ctx=>' '+fmtM(ctx.parsed)+' ('+((ctx.parsed/total)*100).toFixed(1)+'%)'}}}
     }
   });
 
   // ── Sub 2: Faixas de Valor ───────────────────────────────────
-  const totalValor   = valor.reduce((s,f)=>s+f.total,0)||1;
-  const maiorFv      = valor.reduce((a,f)=>f.total>a.total?f:a,{total:0,label:'—'});
-  // Concentração: top-2 faixas de valor mais populosas
-  const sorted2 = [...valor].sort((a,b)=>b.total-a.total).slice(0,2);
-  const conc2   = sorted2.reduce((s,f)=>s+f.total,0);
+  const totalValor   = valor.reduce((s,f)=>s+metric(f),0)||1;
+  const maiorFv      = valor.reduce((a,f)=>metric(f)>metric(a)?f:a,{total:0,saldo:0,label:'—'});
+  // Concentração: top-2 faixas de valor mais representativas na métrica ativa
+  const sorted2 = [...valor].sort((a,b)=>metric(b)-metric(a)).slice(0,2);
+  const conc2   = sorted2.reduce((s,f)=>s+metric(f),0);
 
   document.getElementById('kpi-c-valor').innerHTML =
-    kpiHtml('Total carteira',  fmt(totalValor),  'blue',   '') +
-    kpiHtml('Maior faixa',     maiorFv.label,    'amber',  fmt(maiorFv.total)+' clientes') +
+    kpiHtml('Total carteira',  fmtM(totalValor),  'blue',   '') +
+    kpiHtml('Maior faixa',     maiorFv.label,    'amber',  fmtM(metric(maiorFv))) +
     kpiHtml('Top 2 faixas',    (conc2/totalValor*100).toFixed(1)+'%', 'purple', 'concentração') +
     kpiHtml('Faixas c/ clientes', valor.filter(f=>f.total>0).length, '', 'de '+valor.length+' faixas');
 
-  const maxFv = Math.max(...valor.map(f=>f.total));
+  const maxFv = Math.max(...valor.map(metric));
   const valorAtivos = valor.filter(f=>f.total>0);
   document.getElementById('c-valor-bars').innerHTML = valorAtivos.map((f,i)=>{
-    const barW = (f.total/maxFv*100).toFixed(1);
-    const pct  = (f.total/totalValor*100).toFixed(1);
+    const barW = (metric(f)/maxFv*100).toFixed(1);
+    const pct  = (metric(f)/totalValor*100).toFixed(1);
     const cor  = C_COLORS[i % C_COLORS.length];
-    return `<div class="cf-row" style="grid-template-columns:100px 1fr 50px 70px">
+    return `<div class="cf-row" style="grid-template-columns:100px 1fr 50px 110px">
       <span class="cf-label">${f.label}</span>
       <div class="cf-bar-bg"><div class="cf-bar-fill" style="width:${barW}%;background:${cor}"></div></div>
       <span class="cf-val" style="color:${cor};font-size:11px">${pct}%</span>
-      <span class="cf-sub">${fmt(f.total)}</span>
+      <span class="cf-sub">${fmtM(metric(f))}</span>
     </div>`;
   }).join('');
 
   document.getElementById('c-valor-table').innerHTML = `
-    <div class="cf-header" style="grid-template-columns:100px 80px 80px 80px 80px 80px">
-      <span>Faixa valor</span><span class="r">Clientes</span><span class="r">% Carteira</span>
+    <div class="cf-header" style="grid-template-columns:100px 110px 80px 80px 80px 80px">
+      <span>Faixa valor</span><span class="r">${isValorMode?'Saldo (R$)':'Clientes'}</span><span class="r">% Carteira</span>
       <span class="r">Acionados</span><span class="r">Não acion.</span><span class="r">Cobertura</span>
     </div>` + valor.filter(f=>f.total>0).map((f,i)=>`
-    <div class="cf-row" style="grid-template-columns:100px 80px 80px 80px 80px 80px">
+    <div class="cf-row" style="grid-template-columns:100px 110px 80px 80px 80px 80px">
       <span class="cf-label" style="color:${C_COLORS[i%C_COLORS.length]}">${f.label}</span>
-      <span class="cf-val">${fmt(f.total)}</span>
-      <span class="cf-val">${(f.total/totalValor*100).toFixed(1)}%</span>
+      <span class="cf-val">${fmtM(metric(f))}</span>
+      <span class="cf-val">${(metric(f)/totalValor*100).toFixed(1)}%</span>
       <span class="cf-val" style="color:#059669">${fmt(f.acion)}</span>
       <span class="cf-val" style="color:${f.nao>0?'#DC2626':'#059669'}">${fmt(f.nao)}</span>
       <span class="cf-val"><span class="${chipClass(f.pct)}">${f.pct.toFixed(1)}%</span></span>
@@ -1916,27 +1958,28 @@ function renderCarteira(){
     type:'doughnut',
     data:{
       labels: valorAtivos.map(f=>f.label),
-      datasets:[{data:valorAtivos.map(f=>f.total), backgroundColor:valorAtivos.map((_,i)=>C_COLORS[i%C_COLORS.length]), borderWidth:2, borderColor:'#fff'}]
+      datasets:[{data:valorAtivos.map(metric), backgroundColor:valorAtivos.map((_,i)=>C_COLORS[i%C_COLORS.length]), borderWidth:2, borderColor:'#fff'}]
     },
     options:{responsive:true,maintainAspectRatio:false,cutout:'52%',
       plugins:{legend:{display:false},
-        tooltip:{...TT,callbacks:{label:ctx=>' '+fmt(ctx.parsed)+' clientes ('+((ctx.parsed/totalValor)*100).toFixed(1)+'%)'}}}
+        tooltip:{...TT,callbacks:{label:ctx=>' '+fmtM(ctx.parsed)+' ('+((ctx.parsed/totalValor)*100).toFixed(1)+'%)'}}}
     }
   });
 
   // ── Sub 3: Segmentos ─────────────────────────────────────────
   const segs = SEG_DEFS.map(s=>{
     const rows = s.faixas.map(fi=>atraso[fi]).filter(Boolean);
-    const tot  = rows.reduce((a,r)=>a+r.total,0);
+    const tot  = rows.reduce((a,r)=>a+metric(r),0);
     const ac   = rows.reduce((a,r)=>a+r.acion,0);
-    const nao  = tot - ac;
-    const pct  = tot > 0 ? ac/tot*100 : 0;
+    const nao  = rows.reduce((a,r)=>a+r.nao,0);
+    const qtdTot = rows.reduce((a,r)=>a+r.total,0);
+    const pct  = qtdTot > 0 ? ac/qtdTot*100 : 0;
     return {...s, tot, ac, nao, pct};
   });
   const segTotal = segs.reduce((s,sg)=>s+sg.tot,0)||1;
 
   document.getElementById('kpi-c-seg').innerHTML = segs.map(sg=>
-    kpiHtml(sg.label, fmt(sg.tot), '', (sg.tot/segTotal*100).toFixed(1)+'% da carteira')
+    kpiHtml(sg.label, fmtM(sg.tot), '', (sg.tot/segTotal*100).toFixed(1)+'% da carteira')
   ).join('');
 
   // Donut segmentos
@@ -1949,7 +1992,7 @@ function renderCarteira(){
     },
     options:{responsive:true,maintainAspectRatio:false,cutout:'55%',
       plugins:{legend:{display:false},
-        tooltip:{...TT,callbacks:{label:ctx=>' '+fmt(ctx.parsed)+' ('+((ctx.parsed/segTotal)*100).toFixed(1)+'%)'}}}
+        tooltip:{...TT,callbacks:{label:ctx=>' '+fmtM(ctx.parsed)+' ('+((ctx.parsed/segTotal)*100).toFixed(1)+'%)'}}}
     }
   });
   document.getElementById('c-seg-donut-legend').innerHTML = segs.map(sg=>`
@@ -1970,7 +2013,7 @@ function renderCarteira(){
         <span class="${chipClass(sg.pct)}">${sg.pct.toFixed(1)}% cobertura</span>
       </div>
       <div class="kpi-grid" style="margin-bottom:0">
-        ${kpiHtml('Clientes', fmt(sg.tot), '', (sg.tot/segTotal*100).toFixed(1)+'% do total')}
+        ${kpiHtml(isValorMode?'Saldo':'Clientes', fmtM(sg.tot), '', (sg.tot/segTotal*100).toFixed(1)+'% do total')}
         ${kpiHtml('Acionados', fmt(sg.ac), 'green', '')}
         ${kpiHtml('Não acionados', fmt(sg.nao), sg.nao>0?'red':'green', '')}
       </div>
