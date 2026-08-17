@@ -432,7 +432,7 @@ body.dark .filter-notice{background:rgba(59,130,246,.08)}
 
 <!-- ══ VOLUME ══ -->
 <div id="panel-volume" class="panel">
-  <div class="filter-notice" id="fn-volume" style="display:none">ℹ Filtro de motivo ativo. O volume diário é agregado por canal (digital/telefônico) — não é possível filtrar por motivo nesta aba. Use a aba <strong>Analítico</strong> para ver registros por motivo.</div>
+  <div class="filter-notice" id="fn-volume" style="display:none">ℹ Volume filtrado por motivo.</div>
   <div class="kpi-grid" id="kpi-volume"></div>
   <div class="sec-label">Volume diário por canal</div>
   <div style="display:flex;gap:14px;margin-bottom:8px" id="vol-legend">
@@ -1486,11 +1486,17 @@ function renderVolume(){
     document.getElementById('kpi-volume').innerHTML = kpiHtml('Sem dados','—','');
     return;
   }
-  const totalDigital=vol.reduce((s,d)=>s+d.digital,0);
-  const totalTel=vol.reduce((s,d)=>s+d.tel,0);
-  const totalAcion = ad.total_acionamentos || (totalDigital+totalTel);
+  // Quando há filtro de Canal/Motivo ativo, usa o breakdown por motivo (d.pm)
+  // de cada dia em vez do total agregado — d.pm[motivo] = [digital, tel]
+  const getDig = d => currentMotivo ? ((d.pm && d.pm[currentMotivo]) ? d.pm[currentMotivo][0] : 0) : d.digital;
+  const getTel = d => currentMotivo ? ((d.pm && d.pm[currentMotivo]) ? d.pm[currentMotivo][1] : 0) : d.tel;
 
-  // Aviso: filtro de motivo não pode ser aplicado em dados agregados de volume
+  const totalDigital=vol.reduce((s,d)=>s+getDig(d),0);
+  const totalTel=vol.reduce((s,d)=>s+getTel(d),0);
+  const totalAcionBruto = ad.total_acionamentos || vol.reduce((s,d)=>s+d.digital+d.tel,0);
+  const totalAcion = currentMotivo ? (totalDigital+totalTel) : totalAcionBruto;
+
+  // Aviso: informa que o volume está filtrado por motivo (filtro já é aplicado abaixo)
   const fnVol = document.getElementById('fn-volume');
   if(fnVol) fnVol.style.display = currentMotivo ? '' : 'none';
 
@@ -1499,11 +1505,11 @@ function renderVolume(){
   const showTel     = currentTipo !== 'digital';
   const filteredTotal = (showDigital ? totalDigital : 0) + (showTel ? totalTel : 0);
   const pico = vol.reduce((a,d)=>{
-    const va=(showDigital?d.digital:0)+(showTel?d.tel:0);
-    const aa=(showDigital?a.digital:0)+(showTel?a.tel:0);
+    const va=(showDigital?getDig(d):0)+(showTel?getTel(d):0);
+    const aa=(showDigital?getDig(a):0)+(showTel?getTel(a):0);
     return va>aa?d:a;
   });
-  const picoVal=(showDigital?pico.digital:0)+(showTel?pico.tel:0);
+  const picoVal=(showDigital?getDig(pico):0)+(showTel?getTel(pico):0);
 
   // Esconder seção de efetividade telefônica quando filtro for apenas digital
   const efetSec = document.getElementById('vol-efetividade-section');
@@ -1536,8 +1542,8 @@ function renderVolume(){
   const TT={backgroundColor:'#fff',borderColor:GRID,borderWidth:1,titleColor:'#0F172A',bodyColor:'#64748B',padding:10,cornerRadius:6};
 
   const volumeDatasets = [
-    showDigital ? {label:'Digital',    data:vol.map(d=>d.digital), backgroundColor:'#1D4ED8', stack:'a'} : null,
-    showTel     ? {label:'Telefônico', data:vol.map(d=>d.tel),     backgroundColor:'#7C3AED', stack:'a', borderRadius:{topLeft:3,topRight:3}} : null,
+    showDigital ? {label:'Digital',    data:vol.map(getDig), backgroundColor:'#1D4ED8', stack:'a'} : null,
+    showTel     ? {label:'Telefônico', data:vol.map(getTel), backgroundColor:'#7C3AED', stack:'a', borderRadius:{topLeft:3,topRight:3}} : null,
   ].filter(Boolean);
   charts.volume = new Chart(document.getElementById('chart-volume'),{
     type:'bar',
@@ -1647,6 +1653,15 @@ function renderAnalitico(){
 
 function anFilter(){
   if(!ANALITICO) return;
+  // Auto-correção: "Sem acionamento (0)" é logicamente incompatível com qualquer
+  // filtro global de Canal/Motivo ou Tipo de Ação ativo (ter um motivo/canal
+  // pressupõe pelo menos 1 acionamento) — o select local sempre volta pro valor
+  // "0" a cada renderização da aba, então corrige automaticamente pra "Todos"
+  // sempre que um filtro global estiver ativo, evitando "0 contratos" silencioso.
+  const qtdElAuto = document.getElementById('an-qtd');
+  if(qtdElAuto && qtdElAuto.value==='0' && (currentTipo || currentMotivo)){
+    qtdElAuto.value = '';
+  }
   const FA_LABELS = D.fa_labels||[];
   const FV_LABELS = D.fv_labels||[];
   const AS_LIST   = D.assessoria_list||[];
