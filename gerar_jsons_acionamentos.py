@@ -632,6 +632,122 @@ acionados = int(cart["_acionado"].sum())
 cobertura = round(acionados / total * 100, 1) if total else 0
 print(f"  Total: {total:,} | Acionados: {acionados:,} | Não: {total-acionados:,} | Cobertura: {cobertura}%")
 
+# ================================================================
+#  Propensão a Acordo ("Collection Score") — novo em 20/08/2026
+#  ------------------------------------------------------------
+#  O QUE É: modelo estatístico (regressão logística) treinado na própria
+#  carteira do mês, prevendo a probabilidade de um cliente pertencer ao
+#  perfil que hoje já está em acordo formal ativo (_is_acordo==1) — usado
+#  como proxy de "bom pagador / fácil de converter", já que o CSV não traz
+#  histórico de pagamento real, só o snapshot atual da carteira.
+#
+#  NÃO é o Score Fatura, e pode até divergir dele: nos testes, clientes de
+#  Score Fatura MAIS BAIXO tiveram mais chance de estar em acordo (méd.
+#  248 vs 332) — provavelmente porque são o público mais empurrado pelas
+#  assessorias pra renegociação formal, não porque "score baixo = melhor
+#  pagador". Por isso o nome no dashboard é "Propensão a Acordo", não
+#  "Collection Score" genérico — evita confusão com o Score Fatura oficial.
+#
+#  FEATURES (deliberadamente SEM Dias/Situação/fa_idx — a definição de
+#  _is_acordo já usa esses campos; incluí-los tornaria o modelo tautológico,
+#  não preditivo): idade, score fatura, renda, saldo (log), qtd. de
+#  acionamentos GLOBAL (log) — incluída após comparação: derruba o AUC de
+#  0,63 pra 0,87, capturando "esse caso resolve rápido, com pouco esforço
+#  de cobrança" — mais categoria profissão, sexo, agrupador, UF.
+#
+#  SCORE FINAL: percentil (0-100) da probabilidade prevista dentro da
+#  própria carteira do mês — não a probabilidade bruta (fica baixa demais
+#  pra ler, já que só ~4% da carteira está em acordo). Banda A (top 25%,
+#  maior propensão) a D (25% inferior, menor propensão).
+# ================================================================
+print("  Calculando Propensão a Acordo (Collection Score)...")
+coll_meta = None
+try:
+    import numpy as np
+    from sklearn.linear_model import LogisticRegression
+    from sklearn.model_selection import StratifiedKFold, cross_val_score
+    from sklearn.preprocessing import StandardScaler, OneHotEncoder
+    from sklearn.compose import ColumnTransformer
+    from sklearn.pipeline import Pipeline
+    from sklearn.impute import SimpleImputer
+
+    _catprof_top = cart["_catprof"].value_counts()
+    _catprof_top = set(_catprof_top[_catprof_top > 500].index)
+    _agrup_top   = {"Z ON AZUL PF", "Z ON ROSA PF", "Z ON ROXO PF"}
+    _uf_top      = {"PR", "SC"}
+
+    coll_df = pd.DataFrame({
+        "idade":    cart["_idade"],
+        "score":    cart["_score"],
+        "renda":    cart["_renda"],
+        "log_saldo": np.log1p(cart["_saldo"].clip(lower=0)),
+        "log_qtd":   np.log1p(cart["_qtd"]),
+        "catprof":  cart["_catprof"].where(cart["_catprof"].isin(_catprof_top), "Outros"),
+        "sexo":     cart["_sexo"].where(cart["_sexo"].isin(["Feminino", "Masculino"]), "Não informado"),
+        "agrup":    cart["_ag"].where(cart["_ag"].isin(_agrup_top), "Outros"),
+        "uf":       cart["_uf"].where(cart["_uf"].isin(_uf_top), "Outros"),
+    })
+    coll_y = cart["_is_acordo"]
+
+    _num_cols = ["idade", "score", "renda", "log_saldo", "log_qtd"]
+    _cat_cols = ["catprof", "sexo", "agrup", "uf"]
+
+    _pre_num = Pipeline([("imp", SimpleImputer(strategy="median")), ("sc", StandardScaler())])
+    _pre = ColumnTransformer([
+        ("num", _pre_num, _num_cols),
+        ("cat", OneHotEncoder(handle_unknown="ignore", drop="first"), _cat_cols),
+    ])
+    _clf = Pipeline([("pre", _pre), ("lr", LogisticRegression(max_iter=2000, class_weight="balanced"))])
+
+    _n_pos = int(coll_y.sum())
+    if _n_pos >= 30 and (len(coll_y) - _n_pos) >= 30:
+        _cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
+        _auc_scores = cross_val_score(_clf, coll_df, coll_y, cv=_cv, scoring="roc_auc")
+        _auc = round(float(_auc_scores.mean()), 3)
+
+        _clf.fit(coll_df, coll_y)
+        _proba = _clf.predict_proba(coll_df)[:, 1]
+        cart["_collscore"] = pd.Series(_proba, index=cart.index).rank(pct=True) * 100
+        # banda 0 = A (maior propensão) ... 3 = D (menor propensão)
+        cart["_collband"] = (3 - pd.qcut(cart["_collscore"], 4, labels=False, duplicates="drop")).astype(int)
+
+        _feat_names = _num_cols + list(
+            _clf.named_steps["pre"].named_transformers_["cat"].get_feature_names_out(_cat_cols)
+        )
+        _coefs = _clf.named_steps["lr"].coef_[0]
+        _top_feats = sorted(zip(_feat_names, _coefs), key=lambda x: -abs(x[1]))[:8]
+
+        _band_labels = [
+            "A — Alta propensão", "B — Média-alta propensão",
+            "C — Média-baixa propensão", "D — Baixa propensão",
+        ]
+        # Composição das bandas só sobre quem ainda faz sentido priorizar: fora de
+        # acordo (já resolvido) e fora de "Sem atraso" (saldo=0, nada a cobrar) —
+        # é a mesma população que a aba nova vai listar por padrão.
+        _elig = cart[(cart["_is_acordo"] == 0) & (cart["_saldo"] > 0)]
+        _band_counts = _elig["_collband"].value_counts().reindex(range(4), fill_value=0)
+
+        coll_meta = {
+            "auc": _auc,
+            "n_treino": int(len(coll_y)),
+            "n_pos_treino": _n_pos,
+            "target_desc": "cliente com acordo formal ativo (Situação=Ativo, Dias=0, Saldo>0)",
+            "features": _num_cols + _cat_cols,
+            "top_features": [{"nome": n, "peso": round(float(c), 3)} for n, c in _top_feats],
+            "band_labels": _band_labels,
+            "band_counts": [int(_band_counts.get(i, 0)) for i in range(4)],
+            "n_elegiveis": int(len(_elig)),
+        }
+        print(f"    → AUC (5-fold CV): {_auc} | treino: {len(coll_y):,} clientes ({_n_pos:,} em acordo)")
+    else:
+        print("    ⚠ Poucos casos de acordo na carteira deste mês — Propensão a Acordo não calculada")
+        cart["_collscore"] = 0.0
+        cart["_collband"]  = 3
+except ImportError:
+    print("    ⚠ scikit-learn não instalado — Propensão a Acordo não calculada (pip install scikit-learn)")
+    cart["_collscore"] = 0.0
+    cart["_collband"]  = 3
+
 # Bloco global
 bloco_global = calc_block(cart, acion_valid)
 
@@ -699,6 +815,8 @@ mes_json: dict = {
 }
 if by_assessoria:
     mes_json["by_assessoria"] = by_assessoria
+if coll_meta:
+    mes_json["collection_score_meta"] = coll_meta
 
 
 # ================================================================
@@ -707,7 +825,8 @@ if by_assessoria:
 #  [CPF, Nome, Tipo, Dias, fa_idx, Saldo, fv_idx,
 #   ag_idx, uf_idx, Cidade, QtdAcion, UltimoStatus, StatusFreq, as_idx, is_acordo,
 #   QtdTel, QtdAcionAssessoriaAtual,
-#   sexo_idx, faixa_etaria_idx, categoria_prof_idx, faixa_renda_idx, score_idx]
+#   sexo_idx, faixa_etaria_idx, categoria_prof_idx, faixa_renda_idx, score_idx,
+#   collection_score, collection_band]
 # ================================================================
 print("  Montando analítico...")
 rows = []
@@ -735,6 +854,8 @@ for _, r in cart.iterrows():
         int(r["_catprof_idx"]),             # 19 categoria_prof_idx
         int(r["_renda_idx"]),               # 20 faixa_renda_idx
         int(r["_score_idx"]),               # 21 score_idx
+        round(float(r["_collscore"]), 1),   # 22 collection_score (percentil 0-100, novo em 20/08/2026)
+        int(r["_collband"]),                # 23 collection_band (0=A alta propensão ... 3=D baixa propensão)
     ])
 
 print(f"  → {len(rows):,} registros no analítico")

@@ -319,6 +319,7 @@ body.dark .filter-notice{background:rgba(59,130,246,.08)}
   <button class="tab-btn" data-tab="matriz">Matriz</button>
   <button class="tab-btn" data-tab="volume">Volume</button>
   <button class="tab-btn" data-tab="analitico">Analítico</button>
+  <button class="tab-btn" data-tab="propensao">Propensão a Acordo</button>
   <span style="width:1px;background:rgba(255,255,255,.15);margin:6px 4px;align-self:stretch;flex-shrink:0;"></span>
   <a href="https://devrenanoliveira.github.io/cobranca-pj-convenios-e-cartoes/" target="_blank" rel="noopener"
      title="Carteira PJ — Convênios e Cartões"
@@ -609,6 +610,16 @@ body.dark .filter-notice{background:rgba(59,130,246,.08)}
   </div>
 </div>
 
+<!-- ══ PROPENSÃO A ACORDO ══ -->
+<div id="panel-propensao" class="panel">
+  <div id="cs-content">
+    <div class="an-loading">
+      <div class="spinner"></div>
+      Clique na aba para carregar os dados de propensão…
+    </div>
+  </div>
+</div>
+
 </div>
 </div>
 
@@ -623,6 +634,12 @@ let currentTipo = '';   // '' | 'digital' | 'tel'
 let currentMotivo = ''; // '' | código do motivo
 let anFiltered = [], anPage = 1, anSortCol = -1, anSortDir = 1;
 let anInited = false, anLoading = false;
+// Propensão a Acordo (novo em 20/08/2026) — compartilha o mesmo ANALITICO/anInited
+// carregado pela aba Analítico (mesmo array, colunas 22/23), com estado próprio de
+// filtro/ordenação/paginação
+let csFiltered = [], csPage = 1, csSortCol = 22, csSortDir = -1; // ordena por score desc por padrão
+let csSoAcordo = false; // toggle local: incluir na lista quem já está em acordo (default: fora)
+const CS_PAGE = 50;
 let anAcordo = false; // filtro: mostrar apenas clientes com acordo (aba Analítico)
 let anUseOwnQtd = false; // true quando o filtro "Qtd. Acionamentos" está usando a contagem por assessoria (r[16]) em vez da global (r[10]) — ver anFilter()
 let showAcordos = false; // toggle: incluir clientes em acordo nas métricas gerais
@@ -769,6 +786,8 @@ function applyAcionFilters(){
   }
   // Analítico: re-filtrar tabela
   if(activeTab === 'analitico' && anInited) anFilter();
+  // Propensão a Acordo: re-filtrar tabela
+  if(activeTab === 'propensao' && anInited) csFilter();
   // Matriz: re-renderizar com filtro aplicado
   if(activeTab === 'matriz'){
     if((currentTipo || currentMotivo) && !anInited && !anLoading) loadAnaliticoSilent();
@@ -792,6 +811,10 @@ async function loadAnaliticoSilent(){
     if(!r.ok) throw new Error('HTTP '+r.status);
     ANALITICO = normalizeAnalitico(await r.json());
     anInited = true; anLoading = false;
+    // Deixa Analítico e Propensão prontos em background também, mesmo que o
+    // usuário esteja em outra aba — evita placeholder "clique pra carregar"
+    // preso caso ele troque de aba depois sem disparar um novo fetch
+    renderAnalitico(); renderPropensao();
     // Se ainda estiver na aba matriz/carteira, re-renderizar
     const activeTab = document.querySelector('.tab-btn.active')?.dataset.tab;
     if(activeTab === 'matriz') renderMatrix();
@@ -890,7 +913,7 @@ document.querySelectorAll('.tab-btn').forEach(btn=>{
     // Carteira Interna), que recalculam a partir do analítico quando filtradas.
     const fb = document.getElementById('filter-bar');
     if(fb) fb.classList.remove('hidden');
-    if(btn.dataset.tab==='analitico' && !anInited && !anLoading) loadAnalitico();
+    if((btn.dataset.tab==='analitico' || btn.dataset.tab==='propensao') && !anInited && !anLoading) loadAnalitico();
     // Ao ir para Matriz ou Carteira com filtro ativo, carregar ANALITICO em background se necessário
     else if((btn.dataset.tab==='matriz' || btn.dataset.tab==='carteira') && (currentTipo || currentMotivo) && !anInited && !anLoading) loadAnaliticoSilent();
     // Re-aplicar filtros ao trocar de aba (para Volume e Analítico respeitarem o estado ativo)
@@ -1189,8 +1212,11 @@ async function loadMes(mesId){
   if(cvV) cvV.classList.remove('active');
   anInited = false; anLoading = false; ANALITICO = null;
   document.getElementById('an-content').innerHTML = `<div class="an-loading"><div class="spinner"></div>Clique na aba para carregar os dados analíticos…</div>`;
+  const csResetEl = document.getElementById('cs-content');
+  if(csResetEl) csResetEl.innerHTML = `<div class="an-loading"><div class="spinner"></div>Clique na aba para carregar os dados de propensão…</div>`;
+  csFiltered = []; csPage = 1; csSortCol = 22; csSortDir = -1; csSoAcordo = false;
   const activeTab = document.querySelector('.tab-btn.active');
-  if(activeTab && activeTab.dataset.tab==='analitico'){
+  if(activeTab && (activeTab.dataset.tab==='analitico' || activeTab.dataset.tab==='propensao')){
     document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
     document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));
     document.querySelector('[data-tab="carteira"]').classList.add('active');
@@ -1213,16 +1239,23 @@ async function loadMes(mesId){
 async function loadAnalitico(){
   anLoading = true;
   const mesId = document.getElementById('mes-select').value;
-  document.getElementById('an-content').innerHTML = `<div class="an-loading"><div class="spinner"></div>Carregando dados analíticos…</div>`;
+  const _loadingHtml = `<div class="an-loading"><div class="spinner"></div>Carregando dados analíticos…</div>`;
+  document.getElementById('an-content').innerHTML = _loadingHtml;
+  const _csLoadEl = document.getElementById('cs-content');
+  if(_csLoadEl) _csLoadEl.innerHTML = _loadingHtml;
   try {
     const r = await fetch(`data/${mesId}-analitico.json?v=`+Date.now());
     if(!r.ok) throw new Error('HTTP '+r.status);
     ANALITICO = normalizeAnalitico(await r.json());
     anInited = true; anLoading = false;
     renderAnalitico();
+    renderPropensao();
   } catch(e){
     anLoading = false;
-    document.getElementById('an-content').innerHTML = `<div class="an-loading" style="color:#DC2626">Erro ao carregar dados analíticos.<br><small>${e.message}</small></div>`;
+    const msg = `<div class="an-loading" style="color:#DC2626">Erro ao carregar dados analíticos.<br><small>${e.message}</small></div>`;
+    document.getElementById('an-content').innerHTML = msg;
+    const csEl = document.getElementById('cs-content');
+    if(csEl) csEl.innerHTML = msg;
   }
 }
 
@@ -2009,6 +2042,232 @@ function anExport(){
   XLSX.utils.book_append_sheet(wb,ws,'Analitico');
   const asName = currentAs!==null&&AS_LIST[currentAs]?`_${AS_LIST[currentAs].replace(/[^a-zA-Z0-9]/g,'_')}`:'';
   XLSX.writeFile(wb,`acionamentos_${document.getElementById('mes-select').value}${asName}.xlsx`);
+}
+
+// ═══════════════════════════════════════════
+// PROPENSÃO A ACORDO (Collection Score) — novo em 20/08/2026
+// Modelo estatístico (regressão logística) treinado no próprio mês, prevendo
+// a probabilidade de um cliente ter o perfil de quem já está em acordo formal
+// ativo — usado como proxy de "fácil de converter". NÃO é o Score Fatura e
+// pode divergir dele (ver painel de metodologia abaixo) — por isso o nome
+// evita "Collection Score" genérico. r[22]=score (percentil 0-100),
+// r[23]=banda (0=A maior propensão ... 3=D menor propensão).
+// Compartilha o array ANALITICO já carregado pela aba Analítico.
+// ═══════════════════════════════════════════
+const CS_BAND_CHIP = ['chip-g','chip-y','chip-o','chip-r'];
+const CS_BAND_SHORT = ['A','B','C','D'];
+
+function csBandChip(band){
+  return `<span class="chip ${CS_BAND_CHIP[band]||''}">${CS_BAND_SHORT[band]||'?'}</span>`;
+}
+
+function renderPropensao(){
+  const meta = D.collection_score_meta;
+  const el = document.getElementById('cs-content');
+  if(!meta){
+    el.innerHTML = `<div class="an-loading">⚠ Este mês não tem Propensão a Acordo calculada (JSON gerado antes de 20/08/2026, ou carteira sem casos suficientes de acordo para treinar o modelo).</div>`;
+    return;
+  }
+  const FA_LABELS = D.fa_labels||[];
+  const AS_LIST   = D.assessoria_list||[];
+  const SCORE_LABELS = D.score_labels||[];
+  const asOpts = AS_LIST.length>1
+    ? `<option value="">Todas as assessorias</option>${AS_LIST.map((a,i)=>`<option value="${i}">${a}</option>`).join('')}`
+    : '';
+
+  const html = `
+    <div class="insight warn" style="margin-bottom:14px">
+      <strong>O que é isto:</strong> um modelo estatístico (regressão logística) treinado nos próprios dados
+      da carteira deste mês, estimando qual perfil de cliente tende a fechar e manter um acordo formal de
+      pagamento com pouco esforço de cobrança. <strong>Não é o Score Fatura</strong> — nos testes, os dois
+      chegaram a apontar em direções opostas (clientes de Score Fatura mais baixo tiveram mais chance de
+      já estar em acordo, provavelmente por serem o público mais empurrado pelas assessorias pra
+      renegociação). Use como apoio de priorização, não como avaliação de risco de crédito.
+    </div>
+    <div class="kpi-grid" style="margin-bottom:14px">
+      ${kpiHtml('AUC do modelo', meta.auc, meta.auc>=0.8?'green':meta.auc>=0.65?'amber':'red', '5-fold cross-validation · quanto mais perto de 1, melhor')}
+      ${kpiHtml('Treinado com', fmt(meta.n_treino), '', `${fmt(meta.n_pos_treino)} em acordo (${(meta.n_pos_treino/meta.n_treino*100).toFixed(1)}%)`)}
+      ${kpiHtml('Elegíveis p/ priorizar', fmt(meta.n_elegiveis), '', 'fora de acordo e com saldo > 0')}
+      ${kpiHtml('Alvo do modelo', 'Acordo ativo', '', meta.target_desc)}
+    </div>
+    <details style="margin-bottom:14px">
+      <summary style="cursor:pointer;font-size:12px;font-weight:600;color:#64748B">Ver variáveis com mais peso no modelo</summary>
+      <div style="font-size:11.5px;color:#64748B;margin-top:8px;line-height:1.7">
+        ${meta.top_features.map(f=>`<div><code>${f.nome}</code> — peso ${f.peso>0?'+':''}${f.peso} ${f.peso<0?'(reduz a propensão)':'(aumenta a propensão)'}</div>`).join('')}
+      </div>
+    </details>
+    <div class="cs-filters an-filters">
+      <input type="text" id="cs-search" class="an-search" placeholder="Buscar por CPF ou Nome…" oninput="csFilter()">
+      ${asOpts ? `<select id="cs-as" class="an-select" onchange="csFilter()">${asOpts}</select>` : ''}
+      <select id="cs-fa" class="an-select" onchange="csFilter()"><option value="">Todas as faixas de atraso</option>${FA_LABELS.map((l,i)=>i<9?`<option value="${i}">${l}</option>`:'').join('')}</select>
+      <select id="cs-band" class="an-select" onchange="csFilter()">
+        <option value="">Todas as bandas</option>
+        ${meta.band_labels.map((l,i)=>`<option value="${i}">${l}</option>`).join('')}
+      </select>
+      <button id="btn-cs-acordo" class="btn-acordo ${csSoAcordo?'active':''}" onclick="csToggleAcordo()" title="Por padrão a lista mostra só quem ainda não fechou acordo (faz sentido priorizar). Ative pra incluir quem já está em acordo também.">🤝 Incluir já em acordo</button>
+      <button class="btn-clear" onclick="csClear()">Limpar</button>
+      <button class="btn-export" onclick="csExport()">⬇ Excel</button>
+    </div>
+    <div class="an-summary" id="cs-summary"></div>
+    <div class="an-table-wrap">
+      <table class="an-table">
+        <thead><tr>
+          <th>CPF/CNPJ</th><th>Nome</th>
+          <th class="s" id="th-cs-score" onclick="csSort(22)">Propensão</th>
+          <th>Banda</th>
+          <th>Faixa Atraso</th>
+          <th class="s" id="th-cs-saldo" onclick="csSort(5)">Saldo (R$)</th>
+          <th>Categoria Profissão</th><th>Faixa Etária</th><th>Score Fatura</th>
+          <th class="s" id="th-cs-qtd" onclick="csSort(10)">Qtd. Acion.</th>
+          <th>Último Status</th>
+          ${AS_LIST.length>1?'<th>Assessoria</th>':''}
+        </tr></thead>
+        <tbody id="cs-tbody"></tbody>
+      </table>
+    </div>
+    <div class="an-pagination" id="cs-pagination"></div>`;
+
+  el.innerHTML = html;
+  if(currentAs !== null){
+    const asEl = document.getElementById('cs-as');
+    if(asEl) asEl.value = String(currentAs);
+  }
+  csFilter();
+}
+
+function csFilter(){
+  if(!ANALITICO || !D) return;
+  const CATPROF_LIST = D.catprof_list||[];
+  const IDADE_LABELS = D.faixa_etaria_labels||[];
+  const SCORE_LABELS = D.score_labels||[];
+  const q    = (document.getElementById('cs-search')?.value||'').toLowerCase();
+  const fa   = document.getElementById('cs-fa')?.value;
+  const band = document.getElementById('cs-band')?.value;
+  let asFilter = currentAs !== null ? String(currentAs) : (document.getElementById('cs-as')?.value||'');
+
+  csFiltered = ANALITICO.filter(r=>{
+    if(r[22]===undefined) return false; // JSON antigo sem os campos de propensão
+    if(q && !r[0].includes(q) && !r[1].toLowerCase().includes(q)) return false;
+    if(fa!=='' && fa!==undefined && String(r[4])!==fa) return false;
+    if(band!=='' && band!==undefined && String(r[23])!==band) return false;
+    if(asFilter!=='' && asFilter!==undefined && r[13]!==undefined && String(r[13])!==asFilter) return false;
+    // Base: só faz sentido priorizar quem ainda não fechou acordo e ainda tem saldo em aberto
+    const isAcordoRow = (r[14]===undefined?0:r[14])===1;
+    if(!csSoAcordo && (isAcordoRow || r[5]<=0)) return false;
+    // Filtros globais de tipo/motivo (mesma lógica do Analítico)
+    if(r[15] !== undefined){
+      const qtdTel = r[15], qtdDig = r[10]-qtdTel;
+      if(currentTipo === 'digital' && qtdDig === 0) return false;
+      if(currentTipo === 'tel'     && qtdTel === 0) return false;
+    }
+    if(currentMotivo && r[11] !== currentMotivo) return false;
+    return true;
+  });
+  if(csSortCol>=0) csApplySort();
+  csPage=1; csRender();
+}
+
+function csApplySort(){
+  const c=csSortCol, d=csSortDir;
+  csFiltered=[...csFiltered].sort((a,b)=>(a[c]>b[c]?1:a[c]<b[c]?-1:0)*d);
+}
+
+function csSort(col){
+  const thMap={22:'th-cs-score',5:'th-cs-saldo',10:'th-cs-qtd'};
+  Object.values(thMap).forEach(id=>{const e=document.getElementById(id);if(e)e.classList.remove('sort-asc','sort-desc');});
+  if(csSortCol===col) csSortDir*=-1; else { csSortCol=col; csSortDir = col===22?-1:1; }
+  const th=document.getElementById(thMap[col]);
+  if(th) th.classList.add(csSortDir===1?'sort-asc':'sort-desc');
+  csApplySort(); csPage=1; csRender();
+}
+
+function csToggleAcordo(){
+  csSoAcordo = !csSoAcordo;
+  const btn = document.getElementById('btn-cs-acordo');
+  if(btn) btn.classList.toggle('active', csSoAcordo);
+  csFilter();
+}
+
+function csClear(){
+  ['cs-search','cs-fa','cs-band'].forEach(id=>{ const el=document.getElementById(id); if(el) el.value=''; });
+  if(currentAs !== null){
+    const asEl=document.getElementById('cs-as');
+    if(asEl) asEl.value=String(currentAs);
+  } else {
+    const asEl=document.getElementById('cs-as');
+    if(asEl) asEl.value='';
+  }
+  csSoAcordo = false;
+  const btnA = document.getElementById('btn-cs-acordo');
+  if(btnA) btnA.classList.remove('active');
+  csSortCol=22; csSortDir=-1;
+  ['th-cs-score','th-cs-saldo','th-cs-qtd'].forEach(id=>{const e=document.getElementById(id);if(e)e.classList.remove('sort-asc','sort-desc');});
+  csFilter();
+}
+
+function csRender(){
+  const FA_LABELS = D?D.fa_labels||[]:[];
+  const CATPROF_LIST = D?D.catprof_list||[]:[];
+  const IDADE_LABELS = D?D.faixa_etaria_labels||[]:[];
+  const SCORE_LABELS = D?D.score_labels||[]:[];
+  const AS_LIST = D?D.assessoria_list||[]:[];
+  const showAs = AS_LIST.length > 1;
+  const total = csFiltered.length;
+  const pages = Math.max(1, Math.ceil(total/CS_PAGE));
+  if(csPage>pages) csPage=pages;
+  const start=(csPage-1)*CS_PAGE, end=Math.min(start+CS_PAGE,total);
+  const sumEl=document.getElementById('cs-summary');
+  if(sumEl) sumEl.innerHTML =
+    `<span class="an-badge">${fmt(total)}</span> clientes elegíveis`+
+    ` &nbsp;·&nbsp; pág. ${csPage} de ${fmt(pages)}`+
+    (csSoAcordo?'':' <span style="color:#64748B">(já excluindo quem está em acordo)</span>');
+  const tbody = document.getElementById('cs-tbody');
+  if(tbody) tbody.innerHTML = csFiltered.slice(start,end).map(r=>`<tr>
+    <td class="an-cpf">${fmtCPF(r[0])}</td>
+    <td class="an-nome">${r[1]}</td>
+    <td style="font-weight:700;font-variant-numeric:tabular-nums">${r[22].toFixed(1)}</td>
+    <td>${csBandChip(r[23])}</td>
+    <td><span class="chip ${faChip(r[4])}">${FA_LABELS[r[4]]||r[4]}</span></td>
+    <td class="an-saldo">${fmtSaldo(r[5])}</td>
+    <td>${CATPROF_LIST[r[19]]||'—'}</td>
+    <td>${IDADE_LABELS[r[18]]||'—'}</td>
+    <td>${SCORE_LABELS[r[21]]||'—'}</td>
+    <td style="text-align:center;font-weight:700;font-variant-numeric:tabular-nums;${qtdColor(r[10])}">${r[10]}</td>
+    <td>${stChip(r[11])}</td>
+    ${showAs?`<td class="an-as">${AS_LIST[r[13]]||''}</td>`:''}
+  </tr>`).join('');
+  const pg = document.getElementById('cs-pagination');
+  if(!pg) return;
+  if(pages<=1){pg.innerHTML='';return;}
+  let b=`<button class="pg-btn" onclick="csGo(${csPage-1})" ${csPage===1?'disabled':''}>‹ Ant</button>`;
+  pgRange(csPage,pages).forEach(p=>{
+    b+=p==='…'?`<span style="padding:5px 4px;color:#94A3B8">…</span>`:
+      `<button class="pg-btn ${p===csPage?'active':''}" onclick="csGo(${p})">${p}</button>`;
+  });
+  b+=`<button class="pg-btn" onclick="csGo(${csPage+1})" ${csPage===pages?'disabled':''}>Próx ›</button>`;
+  pg.innerHTML = `<div class="info">Exibindo ${fmt(start+1)}–${fmt(end)} de ${fmt(total)}</div><div class="an-pages">${b}</div>`;
+}
+function csGo(p){ csPage=p; csRender(); document.getElementById('panel-propensao').scrollIntoView({behavior:'smooth',block:'start'}); }
+
+function csExport(){
+  if(typeof XLSX==='undefined'){alert('Carregando biblioteca Excel, tente novamente.');return;}
+  if(!ANALITICO||!D) return;
+  const FA_LABELS=D.fa_labels||[], AS_LIST=D.assessoria_list||[];
+  const CATPROF_LIST=D.catprof_list||[], IDADE_LABELS=D.faixa_etaria_labels||[], SCORE_LABELS=D.score_labels||[];
+  const STATUS_LABEL=D.status_label||{};
+  const showAs = AS_LIST.length > 1;
+  const headers=['CPF/CNPJ','Nome','Propensão (0-100)','Banda','Dias Atraso','Faixa Atraso','Saldo (R$)','Categoria Profissão','Faixa Etária','Score Fatura','Qtd Acionamentos','Último Status'];
+  if(showAs) headers.push('Assessoria');
+  const rows=csFiltered.map(r=>{
+    const row=[r[0],r[1],r[22],CS_BAND_SHORT[r[23]]||'',r[3],FA_LABELS[r[4]]||r[4],r[5],CATPROF_LIST[r[19]]||'',IDADE_LABELS[r[18]]||'',SCORE_LABELS[r[21]]||'',r[10],STATUS_LABEL[r[11]]||r[11]||''];
+    if(showAs) row.push(AS_LIST[r[13]]||'');
+    return row;
+  });
+  const wb=XLSX.utils.book_new();
+  const ws=XLSX.utils.aoa_to_sheet([headers,...rows]);
+  XLSX.utils.book_append_sheet(wb,ws,'Propensao');
+  const asName = currentAs!==null&&AS_LIST[currentAs]?`_${AS_LIST[currentAs].replace(/[^a-zA-Z0-9]/g,'_')}`:'';
+  XLSX.writeFile(wb,`propensao_acordo_${document.getElementById('mes-select').value}${asName}.xlsx`);
 }
 
 // ══ CARTEIRA ══
