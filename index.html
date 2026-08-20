@@ -418,6 +418,8 @@ body.dark .filter-notice{background:rgba(59,130,246,.08)}
 <div id="panel-matriz" class="panel">
   <div class="filter-notice" id="fn-matriz" style="display:none">ℹ Filtro de tipo/motivo ativo.</div>
   <div class="filter-notice" id="matrix-filter-notice" style="display:none;background:rgba(29,78,216,.08);border-color:#3B82F6;color:#1D4ED8"></div>
+  <div class="kpi-grid" id="kpi-matriz"></div>
+  <div class="insight alert" id="insight-matriz"></div>
   <div class="matrix-controls">
     <div class="matrix-desc" id="matrix-desc">Clientes sem acionamento por segmento</div>
     <div class="toggle-group">
@@ -546,6 +548,7 @@ let currentMotivo = ''; // '' | código do motivo
 let anFiltered = [], anPage = 1, anSortCol = -1, anSortDir = 1;
 let anInited = false, anLoading = false;
 let anAcordo = false; // filtro: mostrar apenas clientes com acordo (aba Analítico)
+let anUseOwnQtd = false; // true quando o filtro "Qtd. Acionamentos" está usando a contagem por assessoria (r[16]) em vez da global (r[10]) — ver anFilter()
 let showAcordos = false; // toggle: incluir clientes em acordo nas métricas gerais
 let selAtraso = null, selValor = null;
 let mMode = 'nao', mSel = null;
@@ -718,6 +721,7 @@ function computeFilteredMatrix(){
   const nFa = D.fa_labels.length, nFv = D.fv_labels.length;
   const matrix = Array.from({length:nFa}, ()=>Array.from({length:nFv}, ()=>[0,0]));
   const asFilter = currentAs !== null ? currentAs : null;
+  const hasOwnQtd = ANALITICO.length > 0 && ANALITICO[0][16] !== undefined;
   ANALITICO.forEach(r=>{
     if(asFilter !== null && r[13] !== undefined && r[13] !== asFilter) return;
     if(!showAcordos && r[14] === 1) return; // excluir clientes em acordo
@@ -725,10 +729,16 @@ function computeFilteredMatrix(){
     if(fi < 0 || fi >= nFa || vi < 0 || vi >= nFv) return;
     matrix[fi][vi][1]++;
     const qtdTel = r[15] !== undefined ? r[15] : null;
+    // Quando há assessoria filtrada e o campo r[16] existe, "acionado" (caso
+    // base, sem Tipo/Motivo) usa a contagem feita por ESSA assessoria — não o
+    // histórico global do CPF (r[10]) — mesma correção aplicada em anFilter().
+    // Os ramos digital/tel abaixo continuam usando r[10]/r[15] (globais) porque
+    // não existe hoje uma contagem por canal quebrada por assessoria no JSON.
+    const ownAcionadoBase = (asFilter !== null && hasOwnQtd) ? r[16] > 0 : r[10] > 0;
     let acionado;
     if(currentTipo === 'digital')      acionado = qtdTel !== null ? (r[10]-qtdTel) > 0 : r[10] > 0;
     else if(currentTipo === 'tel')     acionado = qtdTel !== null ? qtdTel > 0          : r[10] > 0;
-    else                               acionado = r[10] > 0;
+    else                               acionado = ownAcionadoBase;
     if(currentMotivo && r[11] !== currentMotivo) acionado = false;
     if(!acionado) matrix[fi][vi][0]++;
   });
@@ -1400,6 +1410,40 @@ function renderMatrix(){
       notice.style.display='none';
     }
   }
+
+  // ── Cards de resumo + insight — mesma leitura de linhas/colunas usada na
+  // tabela abaixo (pula a linha "Acordo" quando showAcordos está desligado e
+  // ignora células sem carteira/tot=0), pra ficar sempre coerente com o que
+  // está desenhado na matriz.
+  let totNao=0, totAll=0, worst=null, cellsComCarteira=0, cellsZerado=0;
+  matrix.forEach((row,ai)=>{
+    if(!showAcordos && D.fa_labels && D.fa_labels[ai] === 'Acordo') return;
+    const faLabel = ad.atraso[ai] ? ad.atraso[ai].label : D.fa_labels[ai];
+    row.forEach(([nao,tot],vi)=>{
+      if(!tot) return;
+      cellsComCarteira++;
+      totNao += nao; totAll += tot;
+      if(nao===0) cellsZerado++;
+      if(!worst || nao>worst.nao) worst = {nao,tot,faLabel,vLabel:VAL_LABELS[vi]};
+    });
+  });
+  const covGeral = totAll>0 ? ((totAll-totNao)/totAll*100) : 0;
+  const kpiMatrizEl = document.getElementById('kpi-matriz');
+  if(kpiMatrizEl) kpiMatrizEl.innerHTML =
+    kpiHtml('Sem contato (total)', fmt(totNao), totNao>0?'red':'green', `${fmt(cellsComCarteira)} cruzamentos com carteira`) +
+    kpiHtml('Cobertura geral', covGeral.toFixed(1)+'%', covGeral>=95?'green':covGeral>=80?'amber':'red', 'acionados ÷ total do segmento') +
+    kpiHtml('Pior cruzamento', worst?fmt(worst.nao):'0', worst&&worst.nao>0?'red':'green', worst?`${worst.faLabel} × ${worst.vLabel}`:'') +
+    kpiHtml('Cruzamentos 100%', fmt(cellsZerado), 'green', `de ${fmt(cellsComCarteira)} com carteira`);
+  const insightMatrizEl = document.getElementById('insight-matriz');
+  if(insightMatrizEl){
+    if(totNao===0){
+      insightMatrizEl.innerHTML = `Cobertura completa: <strong>nenhum cliente sem contato</strong> em nenhum cruzamento de atraso × valor${filterActive?' nesta seleção filtrada':''}.`;
+    } else {
+      const pctDoTotalNao = (worst.nao/totNao*100);
+      insightMatrizEl.innerHTML = `A maior concentração de clientes <strong>sem contato</strong> está em <strong>${worst.faLabel} × ${worst.vLabel}</strong>: ${fmt(worst.nao)} clientes — ${pctDoTotalNao.toFixed(1)}% dos ${fmt(totNao)} sem contato${filterActive?' nesta seleção':''}. Priorizar esse cruzamento é o jeito mais rápido de reduzir o gap de cobertura.`;
+    }
+  }
+
   let h='<thead><tr><th class="rh">Atraso \\ Valor</th>';
   VAL_LABELS.forEach(v=>{h+=`<th>${v}</th>`;});
   h+='</tr></thead><tbody>';
@@ -1684,6 +1728,21 @@ function anFilter(){
   // Assessoria: prioridade ao filtro global, senão o select local
   let asFilter = currentAs !== null ? String(currentAs) : (document.getElementById('an-as')?.value||'');
 
+  // r[10] (QtdAcion) é GLOBAL — soma acionamentos de QUALQUER assessoria que já
+  // tenha tocado o CPF, inclusive de uma assessoria anterior à migração. Isso
+  // diverge do "sem acionamento" mostrado na Matriz por assessoria, que só conta
+  // o que a assessoria ATUAL do cliente já fez (r[16], se presente no JSON).
+  // Exemplo real (18–20/08/2026): migração grande pra Decisão fez a Matriz
+  // mostrar ~45 "sem acionamento" (Decisão nunca ligou), mas o Analítico com
+  // r[10] global mostrava 0 (porque todo mundo já tinha sido contatado por
+  // OUTRA assessoria antes de migrar). Quando há filtro de assessoria ativo e
+  // o campo novo existe no JSON, usa ele em vez do global — mantendo os dois
+  // painéis consistentes.
+  const asActive  = asFilter !== '' && asFilter !== undefined;
+  const hasOwnQtd = ANALITICO.length > 0 && ANALITICO[0][16] !== undefined;
+  const useOwnQtd = asActive && hasOwnQtd;
+  anUseOwnQtd = useOwnQtd;
+
   anFiltered = ANALITICO.filter(r=>{
     if(q && !r[0].includes(q) && !r[1].toLowerCase().includes(q)) return false;
     if(fa!=='' && fa!==undefined && String(r[4])!==fa) return false;
@@ -1691,10 +1750,11 @@ function anFilter(){
     if(ag!=='' && ag!==undefined && String(r[7])!==ag) return false;
     if(uf!=='' && uf!==undefined && String(r[8])!==uf) return false;
     if(tp && r[2]!==tp) return false;
-    if(qtd==='0' && r[10]!==0) return false;
-    if(qtd==='1' && (r[10]<1||r[10]>3)) return false;
-    if(qtd==='4' && (r[10]<4||r[10]>6)) return false;
-    if(qtd==='7' && r[10]<7) return false;
+    const qtdRef = useOwnQtd ? r[16] : r[10];
+    if(qtd==='0' && qtdRef!==0) return false;
+    if(qtd==='1' && (qtdRef<1||qtdRef>3)) return false;
+    if(qtd==='4' && (qtdRef<4||qtdRef>6)) return false;
+    if(qtd==='7' && qtdRef<7) return false;
     // r[13] = as_idx (pode ser undefined em dados antigos)
     if(asFilter!=='' && asFilter!==undefined && r[13]!==undefined && String(r[13])!==asFilter) return false;
     // Filtros globais de tipo/motivo
@@ -1781,7 +1841,8 @@ function anRender(){
   if(sumEl) sumEl.innerHTML=
     `<span class="an-badge">${fmt(total)}</span> contratos`+
     (total<ANALITICO.length?` <span style="color:#64748B">(de ${fmt(ANALITICO.length)} total)</span>`:'')+
-    ` &nbsp;·&nbsp; pág. ${anPage} de ${fmt(pages)}`;
+    ` &nbsp;·&nbsp; pág. ${anPage} de ${fmt(pages)}`+
+    (anUseOwnQtd?` <span style="color:#D97706" title="Coluna Qtd. Acion. e o filtro de quantidade contam só os acionamentos feitos por essa assessoria — não o histórico global do cliente">⚠ Qtd. considera só esta assessoria</span>`:'');
   const tbody=document.getElementById('an-tbody');
   if(tbody) tbody.innerHTML=anFiltered.slice(start,end).map(r=>`<tr>
     <td class="an-cpf">${fmtCPF(r[0])}</td>
