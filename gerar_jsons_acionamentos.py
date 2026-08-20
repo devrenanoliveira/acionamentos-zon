@@ -43,6 +43,27 @@ FA_SEM_ATRASO_IDX = 10  # índice especial para clientes sem saldo (quitados/reg
 FV_LABELS = ["R$0–500","R$500–1k","R$1k–5k","R$5k+"]
 FV_BREAKS = [500, 1000, 5000]   # último label captura tudo acima do último break
 
+# ── Novas dimensões da Carteira (20/08/2026) ────────────────────
+# Gênero — direto da coluna "Sexo" (100% preenchido, 2 valores)
+SEXO_LABELS = ["Feminino", "Masculino", "Não informado"]
+
+# Faixa etária — bucketizada a partir da coluna "Idade" ("49 anos" → 49)
+IDADE_LABELS = ["18–25", "26–35", "36–45", "46–55", "56–65", "66+", "Não informado"]
+IDADE_BREAKS = [25, 35, 45, 55, 65]
+
+# Faixa de renda — bucketizada a partir de "Renda Titular" (R$1.000 a R$50.000 na base)
+RENDA_LABELS = ["até R$1.500", "R$1.500–3.000", "R$3.000–5.000", "R$5.000–10.000", "R$10.000+", "Não informado"]
+RENDA_BREAKS = [1500, 3000, 5000, 10000]
+
+# Faixa de Score Fatura — reaproveita as bandas OFICIAIS já documentadas nas
+# instruções do projeto (Score Fatura 0–999), não uma régua nova
+SCORE_LABELS = [
+    "0–200 (Alto Risco)", "201–300 (Risco Elevado)", "301–400 (Risco Moderado)",
+    "401–500 (Potencial)", "501–600 (Bom)", "601–700 (Ótimo)",
+    "701–800 (Excelente)", "801–999 (Premium)", "Sem Score",
+]
+SCORE_BREAKS = [200, 300, 400, 500, 600, 700, 800]
+
 # ── Códigos de status ───────────────────────────────────────────
 STATUS_LABELS = {
     "NL": "Não Localizado",       "NA": "Não Atendeu",
@@ -82,6 +103,49 @@ def fv_idx(saldo: float) -> int:
         if saldo <= b:
             return i
     return len(FV_BREAKS)   # última faixa: acima do último break (ex: R$5k+)
+
+def sexo_idx(v) -> int:
+    s = str(v).strip().lower()
+    if s.startswith("fem"):
+        return 0
+    if s.startswith("mas"):
+        return 1
+    return 2   # Não informado
+
+def idade_idx(idade) -> int:
+    if idade is None:
+        return len(IDADE_LABELS) - 1   # Não informado
+    for i, b in enumerate(IDADE_BREAKS):
+        if idade <= b:
+            return i
+    return len(IDADE_BREAKS)   # 66+
+
+def renda_idx(renda) -> int:
+    if renda is None:
+        return len(RENDA_LABELS) - 1   # Não informado
+    for i, b in enumerate(RENDA_BREAKS):
+        if renda <= b:
+            return i
+    return len(RENDA_BREAKS)   # R$10.000+
+
+def score_idx(score) -> int:
+    if score is None:
+        return len(SCORE_LABELS) - 1   # Sem Score (último label)
+    for i, b in enumerate(SCORE_BREAKS):
+        if score <= b:
+            return i
+    return len(SCORE_BREAKS)   # 801–999 (Premium) — mesmo padrão de fa_idx/fv_idx
+
+def norm_catprof(v) -> str:
+    """Normaliza Categoria Profissão — corrige mojibake pontual visto na base
+    (ex: 'Aut??nomo' → 'Autônomo', 1 caso em 69k linhas) sem tocar nas demais."""
+    s = str(v).strip()
+    if not s or s.lower() == "nan":
+        return "Não Informado"
+    low = s.lower().replace("?", "")
+    if low == "autnomo":
+        return "Autônomo"
+    return s
 
 def safe_float(v, default=0.0) -> float:
     """Converte número em formato brasileiro (1.234,56) ou americano (1234.56) para float."""
@@ -171,10 +235,19 @@ uf_c    = find_col(cart, ["uf","estado"])
 cid_c   = find_col(cart, ["cidade","municipio","município"])
 ass_c   = find_col(cart, ["assessorias","assessoria"])
 sit_c   = find_col(cart, ["situação","situacao","situação do cliente","situacao_cliente","status cliente","status_cliente"])
+# Novas dimensões da Carteira (20/08/2026) — todas opcionais: se a coluna não
+# existir no CSV daquele mês, o cliente cai no bucket "Não informado"/"Sem Score"
+# em vez de quebrar o script (mesmo padrão de tolerância do find_col em geral).
+sexo_c    = find_col(cart, ["sexo","gênero","genero"])
+idade_c   = find_col(cart, ["idade"])
+catprof_c = find_col(cart, ["categoria profissão","categoria profissao","categoria_profissao"])
+renda_c   = find_col(cart, ["renda titular","renda_titular","renda"])
+score_c   = find_col(cart, ["score fatura","score_fatura","score"])
 
 print(f"  CPF:{cpf_c}  Nome:{nome_c}  Tipo:{tipo_c}  Agrupador:{ag_c}")
 print(f"  Dias:{dias_c}  SC:{sc_c}  STA:{sta_c}  SAT:{sat_c}")
 print(f"  UF:{uf_c}  Cidade:{cid_c}  Assessoria(s):{ass_c}  Situação:{sit_c}")
+print(f"  Sexo:{sexo_c}  Idade:{idade_c}  Cat.Profissão:{catprof_c}  Renda:{renda_c}  Score:{score_c}")
 
 cart["_cpf"]    = cart[cpf_c].astype(str).str.strip() if cpf_c else ""
 cart["_nome"]   = cart[nome_c].astype(str).str.strip() if nome_c else ""
@@ -185,6 +258,18 @@ cart["_uf"]     = cart[uf_c].astype(str).str.strip().str.upper() if uf_c else ""
 cart["_cidade"] = cart[cid_c].astype(str).str.strip() if cid_c else ""
 cart["_as"]     = cart[ass_c].astype(str).str.strip() if ass_c else "—"
 cart["_situacao"] = cart[sit_c].astype(str).str.strip().str.lower() if sit_c else ""
+
+# Novas dimensões (20/08/2026)
+cart["_sexo"] = cart[sexo_c].astype(str).str.strip() if sexo_c else ""
+if idade_c:
+    cart["_idade"] = pd.to_numeric(
+        cart[idade_c].astype(str).str.extract(r"(\d+)")[0], errors="coerce"
+    )
+else:
+    cart["_idade"] = pd.Series([None] * len(cart))
+cart["_catprof"] = cart[catprof_c].apply(norm_catprof) if catprof_c else "Não Informado"
+cart["_renda"] = cart[renda_c].apply(lambda v: safe_float(v, None) if pd.notna(v) else None) if renda_c else pd.Series([None] * len(cart))
+cart["_score"] = pd.to_numeric(cart[score_c], errors="coerce") if score_c else pd.Series([None] * len(cart))
 
 def get_saldo(row) -> float:
     for col in [sc_c, sta_c, sea_c, sat_c]:
@@ -248,6 +333,19 @@ cart["_as_idx"] = cart["_as"].map(as_map).fillna(0).astype(int)
 
 print(f"  Assessorias na carteira: {as_list}")
 
+# ── Índices das novas dimensões (20/08/2026) ────────────────────
+cart["_sexo_idx"]  = cart["_sexo"].apply(sexo_idx)
+cart["_idade_idx"] = cart["_idade"].apply(lambda v: idade_idx(None if pd.isna(v) else float(v)))
+cart["_renda_idx"] = cart["_renda"].apply(lambda v: renda_idx(None if v is None or pd.isna(v) else float(v)))
+cart["_score_idx"] = cart["_score"].apply(lambda v: score_idx(None if pd.isna(v) else float(v)))
+
+# Categoria Profissão — lista dinâmica (13 categorias reais na base atual),
+# ordenada por volume decrescente pra ficar mais legível nos gráficos/tabelas
+catprof_counts = cart["_catprof"].value_counts()
+catprof_list   = catprof_counts.index.tolist()
+catprof_map    = {c: i for i, c in enumerate(catprof_list)}
+cart["_catprof_idx"] = cart["_catprof"].map(catprof_map).fillna(0).astype(int)
+
 
 # ================================================================
 #  [3] Normalizar Acionamentos
@@ -282,6 +380,30 @@ acion["_is_tel"] = acion["_acao"].str.contains(r"TEL|CONTATO", na=False, regex=T
 cart_cpfs   = set(cart["_cpf"])
 acion_valid = acion[acion["_cpf"].isin(cart_cpfs)].copy()
 print(f"  → {len(acion):,} acionamentos  |  {len(acion_valid):,} de clientes na carteira")
+
+
+# ================================================================
+#  calc_dim — breakdown genérico de uma dimensão categórica
+#  (mesmo formato usado por "atraso"/"valor": label/total/acion/nao/pct/saldo)
+#  Usada pelas novas dimensões da Carteira (Gênero, Faixa Etária,
+#  Categoria Profissão, Faixa de Renda, Score Fatura, Carteira Interna)
+# ================================================================
+def calc_dim(df_c: pd.DataFrame, idx_col: str, labels: list) -> list:
+    out = []
+    for i, label in enumerate(labels):
+        sub = df_c[df_c[idx_col] == i]
+        t   = len(sub)
+        n   = int((~sub["_acionado"]).sum())
+        s   = round(float(sub["_saldo"].sum()), 2)
+        out.append({
+            "label": label,
+            "total": t,
+            "acion": t - n,
+            "nao":   n,
+            "pct":   round((t - n) / t * 100, 1) if t else 0.0,
+            "saldo": s,
+        })
+    return out
 
 
 # ================================================================
@@ -333,6 +455,27 @@ def calc_block(df_c: pd.DataFrame, df_a: pd.DataFrame) -> dict:
             "pct":   round((vt - vn) / vt * 100, 1) if vt else 0.0,
             "saldo": vs,
         })
+
+    # ── Novas dimensões da Carteira (20/08/2026) ─────────────────
+    # Cada uma é calculada duas vezes: sobre todos os clientes do bloco (usada
+    # quando o toggle "Acordos" está LIGADO) e só sobre os clientes SEM acordo
+    # ativo (usada quando está DESLIGADO, o padrão) — mesmo efeito prático do
+    # toggle já aplicado em Atraso/Valor, só que aqui via duas listas prontas
+    # em vez de subtrair uma célula de matriz (essas dimensões não têm uma
+    # linha "Acordo" própria como a Atraso tem).
+    c_sem_acordo = c[c["_is_acordo"] == 0]
+    genero              = calc_dim(c,            "_sexo_idx",    SEXO_LABELS)
+    genero_sem_acordo   = calc_dim(c_sem_acordo, "_sexo_idx",    SEXO_LABELS)
+    faixa_etaria            = calc_dim(c,            "_idade_idx",   IDADE_LABELS)
+    faixa_etaria_sem_acordo = calc_dim(c_sem_acordo, "_idade_idx",   IDADE_LABELS)
+    categoria_prof            = calc_dim(c,            "_catprof_idx", catprof_list)
+    categoria_prof_sem_acordo = calc_dim(c_sem_acordo, "_catprof_idx", catprof_list)
+    faixa_renda            = calc_dim(c,            "_renda_idx",   RENDA_LABELS)
+    faixa_renda_sem_acordo = calc_dim(c_sem_acordo, "_renda_idx",   RENDA_LABELS)
+    score_banda            = calc_dim(c,            "_score_idx",   SCORE_LABELS)
+    score_banda_sem_acordo = calc_dim(c_sem_acordo, "_score_idx",   SCORE_LABELS)
+    agrupador            = calc_dim(c,            "_ag_idx",      ag_list)
+    agrupador_sem_acordo = calc_dim(c_sem_acordo, "_ag_idx",      ag_list)
 
     # ── Matriz 2D [fa_idx][fv_idx] = [nao, total] ───────────────
     grp = (c.groupby(["_fa", "_fv"])
@@ -423,6 +566,13 @@ def calc_block(df_c: pd.DataFrame, df_a: pd.DataFrame) -> dict:
         "freq":     freq,
         "volume":   volume,
         "motivos":  motivos,
+        # Novas dimensões da Carteira (20/08/2026) — ver Seção 7 do doc do projeto
+        "genero": genero, "genero_sem_acordo": genero_sem_acordo,
+        "faixa_etaria": faixa_etaria, "faixa_etaria_sem_acordo": faixa_etaria_sem_acordo,
+        "categoria_prof": categoria_prof, "categoria_prof_sem_acordo": categoria_prof_sem_acordo,
+        "faixa_renda": faixa_renda, "faixa_renda_sem_acordo": faixa_renda_sem_acordo,
+        "score_banda": score_banda, "score_banda_sem_acordo": score_banda_sem_acordo,
+        "agrupador": agrupador, "agrupador_sem_acordo": agrupador_sem_acordo,
     }
 
 
@@ -531,6 +681,12 @@ mes_json: dict = {
     "fa_labels":          FA_LABELS,
     "fv_labels":          FV_LABELS,
     "status_label":       STATUS_LABELS,
+    # Novas dimensões da Carteira (20/08/2026)
+    "sexo_labels":        SEXO_LABELS,
+    "faixa_etaria_labels": IDADE_LABELS,
+    "catprof_list":       catprof_list,
+    "renda_labels":       RENDA_LABELS,
+    "score_labels":       SCORE_LABELS,
     # KPIs globais (espalhados no nível raiz)
     **bloco_global,
     # Acordos — para o dashboard poder excluí-los das métricas de cobertura
@@ -550,7 +706,8 @@ if by_assessoria:
 #  Array plano — formato lido diretamente por ANALITICO.filter(...)
 #  [CPF, Nome, Tipo, Dias, fa_idx, Saldo, fv_idx,
 #   ag_idx, uf_idx, Cidade, QtdAcion, UltimoStatus, StatusFreq, as_idx, is_acordo,
-#   QtdTel, QtdAcionAssessoriaAtual]
+#   QtdTel, QtdAcionAssessoriaAtual,
+#   sexo_idx, faixa_etaria_idx, categoria_prof_idx, faixa_renda_idx, score_idx]
 # ================================================================
 print("  Montando analítico...")
 rows = []
@@ -573,6 +730,11 @@ for _, r in cart.iterrows():
         int(r["_is_acordo"]),               # 14 is_acordo (1=acordo, 0=normal)
         int(r["_qtd_tel"]),                 # 15 qtd_tel  (acionamentos telefônicos)
         int(r["_qtd_own"]),                 # 16 qtd_own  (acionamentos pela assessoria ATUAL do cliente)
+        int(r["_sexo_idx"]),                # 17 sexo_idx (novo em 20/08/2026)
+        int(r["_idade_idx"]),               # 18 faixa_etaria_idx
+        int(r["_catprof_idx"]),             # 19 categoria_prof_idx
+        int(r["_renda_idx"]),               # 20 faixa_renda_idx
+        int(r["_score_idx"]),               # 21 score_idx
     ])
 
 print(f"  → {len(rows):,} registros no analítico")

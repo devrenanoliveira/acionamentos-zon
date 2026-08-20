@@ -333,7 +333,7 @@ body.dark .filter-notice{background:rgba(59,130,246,.08)}
 </nav>
 
 <!-- ── FILTER BAR ── -->
-<div class="filter-bar hidden" id="filter-bar">
+<div class="filter-bar" id="filter-bar">
   <span class="fb-label">Filtros de Acionamento</span>
   <div class="fb-sep"></div>
   <div class="fb-chip">
@@ -471,12 +471,20 @@ body.dark .filter-notice{background:rgba(59,130,246,.08)}
       <button class="sub-btn active" onclick="showCarteiraSub('atraso',this)">Faixas de Atraso</button>
       <button class="sub-btn" onclick="showCarteiraSub('valor',this)">Faixas de Valor</button>
       <button class="sub-btn" onclick="showCarteiraSub('segmento',this)">Segmentos</button>
+      <span style="width:1px;background:var(--border);align-self:stretch;margin:2px 2px"></span>
+      <button class="sub-btn" onclick="showCarteiraSub('genero',this)">Gênero</button>
+      <button class="sub-btn" onclick="showCarteiraSub('idade',this)">Faixa Etária</button>
+      <button class="sub-btn" onclick="showCarteiraSub('catprof',this)">Categoria Profissão</button>
+      <button class="sub-btn" onclick="showCarteiraSub('renda',this)">Faixa de Renda</button>
+      <button class="sub-btn" onclick="showCarteiraSub('score',this)">Score Fatura</button>
+      <button class="sub-btn" onclick="showCarteiraSub('agrupador',this)">Carteira Interna</button>
     </div>
     <div class="cv-toggle" id="cv-toggle">
       <button id="cv-btn-qtd" class="cv-toggle-btn active" onclick="setCarteiraViewMode('qtd')">🔢 Quantidade</button>
       <button id="cv-btn-valor" class="cv-toggle-btn" onclick="setCarteiraViewMode('valor')">💰 Valor (R$)</button>
     </div>
   </div>
+  <div class="filter-notice" id="fn-c-dims" style="display:none">ℹ Filtro de Tipo de Ação/Canal-Motivo ativo — as novas visões (Gênero, Faixa Etária, Categoria Profissão, Faixa de Renda, Score Fatura, Carteira Interna) recalculam a partir dos dados individuais; Faixas de Atraso/Valor/Segmentos continuam mostrando os totais consolidados (não filtrados por tipo/motivo).</div>
 
   <!-- Sub: Faixas de Atraso -->
   <div id="csub-atraso" class="sub-panel active">
@@ -526,6 +534,68 @@ body.dark .filter-notice{background:rgba(59,130,246,.08)}
         <div id="c-seg-table"></div>
       </div>
     </div>
+  </div>
+
+  <!-- Sub: Gênero / Faixa Etária / Categoria Profissão / Faixa de Renda / Score Fatura / Carteira Interna
+       — geradas todas pelo mesmo template genérico (ver CART_DIMS / renderCartDim no JS) -->
+  <div id="csub-genero" class="sub-panel">
+    <div class="kpi-grid" id="kpi-c-genero"></div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;align-items:start">
+      <div><div class="sec-label">Distribuição — % da carteira</div><div id="c-genero-bars"></div></div>
+      <div><div class="sec-label">Composição</div><div class="chart-wrap" style="height:260px"><canvas id="chart-c-genero"></canvas></div></div>
+    </div>
+    <div class="sec-label" style="margin-top:4px">Detalhe</div>
+    <div id="c-genero-table"></div>
+  </div>
+
+  <div id="csub-idade" class="sub-panel">
+    <div class="kpi-grid" id="kpi-c-idade"></div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;align-items:start">
+      <div><div class="sec-label">Distribuição — % da carteira</div><div id="c-idade-bars"></div></div>
+      <div><div class="sec-label">Composição</div><div class="chart-wrap" style="height:260px"><canvas id="chart-c-idade"></canvas></div></div>
+    </div>
+    <div class="sec-label" style="margin-top:4px">Detalhe</div>
+    <div id="c-idade-table"></div>
+  </div>
+
+  <div id="csub-catprof" class="sub-panel">
+    <div class="kpi-grid" id="kpi-c-catprof"></div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;align-items:start">
+      <div><div class="sec-label">Distribuição — % da carteira</div><div id="c-catprof-bars"></div></div>
+      <div><div class="sec-label">Composição</div><div class="chart-wrap" style="height:260px"><canvas id="chart-c-catprof"></canvas></div></div>
+    </div>
+    <div class="sec-label" style="margin-top:4px">Detalhe</div>
+    <div id="c-catprof-table"></div>
+  </div>
+
+  <div id="csub-renda" class="sub-panel">
+    <div class="kpi-grid" id="kpi-c-renda"></div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;align-items:start">
+      <div><div class="sec-label">Distribuição — % da carteira</div><div id="c-renda-bars"></div></div>
+      <div><div class="sec-label">Composição</div><div class="chart-wrap" style="height:260px"><canvas id="chart-c-renda"></canvas></div></div>
+    </div>
+    <div class="sec-label" style="margin-top:4px">Detalhe</div>
+    <div id="c-renda-table"></div>
+  </div>
+
+  <div id="csub-score" class="sub-panel">
+    <div class="kpi-grid" id="kpi-c-score"></div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;align-items:start">
+      <div><div class="sec-label">Distribuição — % da carteira</div><div id="c-score-bars"></div></div>
+      <div><div class="sec-label">Composição</div><div class="chart-wrap" style="height:260px"><canvas id="chart-c-score"></canvas></div></div>
+    </div>
+    <div class="sec-label" style="margin-top:4px">Detalhe</div>
+    <div id="c-score-table"></div>
+  </div>
+
+  <div id="csub-agrupador" class="sub-panel">
+    <div class="kpi-grid" id="kpi-c-agrupador"></div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;align-items:start">
+      <div><div class="sec-label">Distribuição — % da carteira</div><div id="c-agrupador-bars"></div></div>
+      <div><div class="sec-label">Composição</div><div class="chart-wrap" style="height:260px"><canvas id="chart-c-agrupador"></canvas></div></div>
+    </div>
+    <div class="sec-label" style="margin-top:4px">Detalhe</div>
+    <div id="c-agrupador-table"></div>
   </div>
 </div>
 
@@ -676,6 +746,9 @@ function updateFbBadge(){
   // fn-matriz: oculto agora — matrix-filter-notice é renderizado por renderMatrix()
   const fnMat = document.getElementById('fn-matriz');
   if(fnMat) fnMat.style.display = 'none';
+  // Carteira: aviso específico das novas dimensões (Gênero, Faixa Etária etc.)
+  const fnCDims = document.getElementById('fn-c-dims');
+  if(fnCDims) fnCDims.style.display = hasFilter ? '' : 'none';
 }
 function clearAcionFilters(){
   currentTipo=''; currentMotivo='';
@@ -701,6 +774,12 @@ function applyAcionFilters(){
     if((currentTipo || currentMotivo) && !anInited && !anLoading) loadAnaliticoSilent();
     else renderMatrix();
   }
+  // Carteira: as novas dimensões (Gênero, Faixa Etária...) recalculam a partir
+  // do analítico quando Tipo/Motivo está ativo — mesmo padrão da Matriz
+  if(activeTab === 'carteira'){
+    if((currentTipo || currentMotivo) && !anInited && !anLoading) loadAnaliticoSilent();
+    else renderCarteira();
+  }
 }
 
 // Carrega ANALITICO silenciosamente (sem trocar de aba) para uso na Matriz filtrada
@@ -713,9 +792,10 @@ async function loadAnaliticoSilent(){
     if(!r.ok) throw new Error('HTTP '+r.status);
     ANALITICO = normalizeAnalitico(await r.json());
     anInited = true; anLoading = false;
-    // Se ainda estiver na aba matriz, re-renderizar
+    // Se ainda estiver na aba matriz/carteira, re-renderizar
     const activeTab = document.querySelector('.tab-btn.active')?.dataset.tab;
     if(activeTab === 'matriz') renderMatrix();
+    if(activeTab === 'carteira') renderCarteira();
   } catch(e){
     anLoading = false;
   }
@@ -784,6 +864,7 @@ function toggleShowAcordos(){
   renderValor();
   renderMatrix();
   renderVolume();
+  renderCarteira();
   // Analítico: reaplicar filtro (exclui/inclui acordos conforme showAcordos)
   if(anInited) anFilter();
 }
@@ -803,12 +884,15 @@ document.querySelectorAll('.tab-btn').forEach(btn=>{
     document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));
     btn.classList.add('active');
     document.getElementById('panel-'+btn.dataset.tab).classList.add('active');
-    // Mostrar/ocultar filtros (não exibir na aba Carteira)
+    // Barra de filtros visível em todas as abas — desde 20/08/2026 também em
+    // Carteira, pra permitir Tipo de Ação/Canal-Motivo/Acordos nas novas visões
+    // (Gênero, Faixa Etária, Categoria Profissão, Faixa de Renda, Score Fatura,
+    // Carteira Interna), que recalculam a partir do analítico quando filtradas.
     const fb = document.getElementById('filter-bar');
-    if(fb) fb.classList.toggle('hidden', btn.dataset.tab === 'carteira');
+    if(fb) fb.classList.remove('hidden');
     if(btn.dataset.tab==='analitico' && !anInited && !anLoading) loadAnalitico();
-    // Ao ir para Matriz com filtro ativo, carregar ANALITICO em background se necessário
-    else if(btn.dataset.tab==='matriz' && (currentTipo || currentMotivo) && !anInited && !anLoading) loadAnaliticoSilent();
+    // Ao ir para Matriz ou Carteira com filtro ativo, carregar ANALITICO em background se necessário
+    else if((btn.dataset.tab==='matriz' || btn.dataset.tab==='carteira') && (currentTipo || currentMotivo) && !anInited && !anLoading) loadAnaliticoSilent();
     // Re-aplicar filtros ao trocar de aba (para Volume e Analítico respeitarem o estado ativo)
     else if(btn.dataset.tab !== 'carteira' && (currentTipo || currentMotivo)) {
       setTimeout(applyAcionFilters, 0);
@@ -995,7 +1079,12 @@ function _normBlock(blk, faLabels, fvLabels) {
   let max_nao = 0;
   matrix.forEach(row => row.forEach(([nao]) => { if (nao > max_nao) max_nao = nao; }));
 
-  return {total_clientes, acionados, sem_acionamento, com_promessa, total_acionamentos,
+  return {
+    ...blk,   // preserva campos extras não normalizados explicitamente aqui (ex: as novas
+              // dimensões da Carteira — genero/faixa_etaria/categoria_prof/faixa_renda/
+              // score_banda/agrupador e suas variantes _sem_acordo — já vêm prontas do Python
+              // no mesmo formato {label,total,acion,nao,pct,saldo} usado por atraso/valor)
+    total_clientes, acionados, sem_acionamento, com_promessa, total_acionamentos,
     total_tel, atraso, valor, matrix, volume, motivos, freq, max_nao,
     saldo: blk.saldo || 0};
 }
@@ -1950,6 +2039,147 @@ function setCarteiraViewMode(mode){
   renderCarteira();
 }
 
+// ═══════════════════════════════════════════
+// NOVAS DIMENSÕES DA CARTEIRA (20/08/2026)
+// Gênero, Faixa Etária, Categoria Profissão, Faixa de Renda, Score Fatura,
+// Carteira Interna (Agrupador) — todas no mesmo formato de "atraso"/"valor"
+// ({label,total,acion,nao,pct,saldo}), renderizadas por um template único
+// (renderCartDim). Caminho rápido: blocos pré-calculados no JSON mensal
+// (respeitam Assessoria + toggle Acordos). Caminho dinâmico: recalculado a
+// partir do analítico quando Tipo de Ação/Canal-Motivo está ativo — mesmo
+// padrão já usado pela Matriz (computeFilteredMatrix).
+// ═══════════════════════════════════════════
+const CART_DIMS = {
+  genero:    {key:'genero',         analIdx:17, labelsKey:'sexo_labels'},
+  idade:     {key:'faixa_etaria',   analIdx:18, labelsKey:'faixa_etaria_labels'},
+  catprof:   {key:'categoria_prof', analIdx:19, labelsKey:'catprof_list'},
+  renda:     {key:'faixa_renda',    analIdx:20, labelsKey:'renda_labels'},
+  score:     {key:'score_banda',    analIdx:21, labelsKey:'score_labels'},
+  agrupador: {key:'agrupador',      analIdx:7,  labelsKey:'ag_list'},
+};
+let cDimCharts = {};
+
+// Recalcula uma dimensão a partir do ANALITICO, respeitando os mesmos filtros
+// que computeFilteredMatrix() já aplica (Assessoria, Tipo/Motivo, Acordos,
+// r[16]/qtd_own quando há assessoria filtrada) — genérico por índice de campo.
+function computeFilteredDim(fieldIdx, labels){
+  if(!ANALITICO || !D) return null;
+  const n = labels.length;
+  const rows = labels.map(l=>({label:l,total:0,acion:0,nao:0,saldo:0}));
+  const asFilter = currentAs !== null ? currentAs : null;
+  const hasOwnQtd = ANALITICO.length > 0 && ANALITICO[0][16] !== undefined;
+  ANALITICO.forEach(r=>{
+    if(asFilter !== null && r[13] !== undefined && r[13] !== asFilter) return;
+    if(!showAcordos && r[14] === 1) return; // excluir clientes em acordo
+    const di = r[fieldIdx];
+    if(di===undefined || di<0 || di>=n) return;
+    const row = rows[di];
+    row.total++; row.saldo += (r[5]||0);
+    const qtdTel = r[15] !== undefined ? r[15] : null;
+    const ownAcionadoBase = (asFilter !== null && hasOwnQtd) ? r[16] > 0 : r[10] > 0;
+    let acionado;
+    if(currentTipo === 'digital')      acionado = qtdTel !== null ? (r[10]-qtdTel) > 0 : r[10] > 0;
+    else if(currentTipo === 'tel')     acionado = qtdTel !== null ? qtdTel > 0          : r[10] > 0;
+    else                               acionado = ownAcionadoBase;
+    if(currentMotivo && r[11] !== currentMotivo) acionado = false;
+    if(acionado) row.acion++; else row.nao++;
+  });
+  rows.forEach(row=>{
+    row.pct   = row.total ? Math.round((row.acion/row.total*100)*10)/10 : 0;
+    row.saldo = Math.round(row.saldo*100)/100;
+  });
+  return rows;
+}
+
+// Retorna as linhas ativas de uma dimensão: dinâmicas (respeitando Tipo/Motivo)
+// quando o analítico já está carregado e tem os campos novos, senão o bloco
+// pré-calculado do JSON mensal (respeita Assessoria + Acordos, mas não Tipo/Motivo)
+function getCartDimRows(dimId){
+  const cfg = CART_DIMS[dimId];
+  const filterActive = !!(currentTipo || currentMotivo);
+  const hasDimField = ANALITICO && ANALITICO.length && ANALITICO[0][cfg.analIdx] !== undefined;
+  if(filterActive && anInited && hasDimField){
+    return computeFilteredDim(cfg.analIdx, D[cfg.labelsKey]||[]);
+  }
+  const ad = getAD();
+  return (showAcordos ? ad[cfg.key] : ad[cfg.key+'_sem_acordo']) || ad[cfg.key] || [];
+}
+
+// Template único de renderização — mesmo padrão visual de "Faixas de Atraso"
+// (KPIs + barras + donut + tabela detalhada), reaproveitado pelas 6 dimensões.
+function renderCartDim(dimId, title){
+  const rows = getCartDimRows(dimId);
+  if(!rows || !rows.length) return;
+  const isValorMode = carteiraViewMode === 'valor';
+  const metric  = f => isValorMode ? (f.saldo||0) : f.total;
+  const fmtM    = v => isValorMode ? fmtR$(v) : fmt(v);
+  const total   = rows.reduce((s,f)=>s+metric(f),0) || 1;
+  const ativos  = rows.filter(f=>f.total>0);
+  const maiorF  = rows.reduce((a,f)=>metric(f)>metric(a)?f:a, {total:0,saldo:0,label:'—'});
+  const naoTotal = rows.reduce((s,f)=>s+f.nao,0);
+  const piorIdx  = ativos.reduce((mi,r,i)=>(ativos[mi]&&r.pct<ativos[mi].pct)?i:mi, 0);
+  const pior = ativos[piorIdx] || {label:'—',pct:0};
+
+  const kpiEl = document.getElementById('kpi-c-'+dimId);
+  if(kpiEl) kpiEl.innerHTML =
+    kpiHtml('Total carteira', fmtM(total), 'blue', '') +
+    kpiHtml('Maior '+title.toLowerCase(), maiorF.label, 'amber', fmtM(metric(maiorF))) +
+    kpiHtml('Pior cobertura', pior.pct.toFixed(1)+'%', pior.pct<85?'red':'green', pior.label) +
+    kpiHtml('Sem contato', fmt(naoTotal), naoTotal>0?'red':'green', 'clientes não acionados');
+
+  const maxV = Math.max(...rows.map(metric), 1);
+  const barsEl = document.getElementById('c-'+dimId+'-bars');
+  if(barsEl) barsEl.innerHTML = ativos.map((f,i)=>{
+    const barW = (metric(f)/maxV*100).toFixed(1);
+    const pct  = (metric(f)/total*100).toFixed(1);
+    const cor  = C_COLORS[i % C_COLORS.length];
+    return `<div class="cf-row" style="grid-template-columns:130px 1fr 50px 110px">
+      <span class="cf-label">${f.label}</span>
+      <div class="cf-bar-bg"><div class="cf-bar-fill" style="width:${barW}%;background:${cor}"></div></div>
+      <span class="cf-val" style="color:${cor};font-size:11px">${pct}%</span>
+      <span class="cf-sub">${fmtM(metric(f))}</span>
+    </div>`;
+  }).join('');
+
+  const tableEl = document.getElementById('c-'+dimId+'-table');
+  if(tableEl) tableEl.innerHTML = `
+    <div class="cf-header" style="grid-template-columns:130px 110px 80px 80px 80px 80px">
+      <span>${title}</span><span class="r">${isValorMode?'Saldo (R$)':'Clientes'}</span><span class="r">% Carteira</span>
+      <span class="r">Acionados</span><span class="r">Não acion.</span><span class="r">Cobertura</span>
+    </div>` + ativos.map((f,i)=>`
+    <div class="cf-row" style="grid-template-columns:130px 110px 80px 80px 80px 80px">
+      <span class="cf-label" style="color:${C_COLORS[i%C_COLORS.length]}">${f.label}</span>
+      <span class="cf-val">${fmtM(metric(f))}</span>
+      <span class="cf-val">${(metric(f)/total*100).toFixed(1)}%</span>
+      <span class="cf-val" style="color:#059669">${fmt(f.acion)}</span>
+      <span class="cf-val" style="color:${f.nao>0?'#DC2626':'#059669'}">${fmt(f.nao)}</span>
+      <span class="cf-val"><span class="${chipClass(f.pct)}">${f.pct.toFixed(1)}%</span></span>
+    </div>`).join('');
+
+  if(cDimCharts[dimId]){ cDimCharts[dimId].destroy(); }
+  const canvas = document.getElementById('chart-c-'+dimId);
+  if(canvas){
+    const GRID='#E2E8F0';
+    const TT={backgroundColor:'#fff',borderColor:GRID,borderWidth:1,titleColor:'#0F172A',bodyColor:'#64748B',padding:10,cornerRadius:6};
+    cDimCharts[dimId] = new Chart(canvas,{
+      type:'doughnut',
+      data:{labels:ativos.map(f=>f.label), datasets:[{data:ativos.map(metric), backgroundColor:ativos.map((_,i)=>C_COLORS[i%C_COLORS.length]), borderWidth:2, borderColor:'#fff'}]},
+      options:{responsive:true,maintainAspectRatio:false,cutout:'52%',
+        plugins:{legend:{display:false},
+          tooltip:{...TT,callbacks:{label:ctx=>' '+fmtM(ctx.parsed)+' ('+((ctx.parsed/total)*100).toFixed(1)+'%)'}}}}
+    });
+  }
+}
+
+function renderAllCartDims(){
+  renderCartDim('genero',    'Gênero');
+  renderCartDim('idade',     'Faixa Etária');
+  renderCartDim('catprof',   'Categoria');
+  renderCartDim('renda',     'Faixa de Renda');
+  renderCartDim('score',     'Score Fatura');
+  renderCartDim('agrupador', 'Carteira');
+}
+
 function renderCarteira(){
   if(!D) return;
   const ad = getAD();
@@ -2145,6 +2375,10 @@ function renderCarteira(){
       </div>
       <div class="progress-labels"><span style="color:${sg.cor}">Acionados ${sg.pct.toFixed(1)}%</span><span>Sem contato ${(100-sg.pct).toFixed(1)}%</span></div>
     </div>`).join('');
+
+  // ── Novas dimensões (Gênero, Faixa Etária, Categoria Profissão, Faixa de
+  //    Renda, Score Fatura, Carteira Interna) — ver Seção 7 do doc do projeto
+  renderAllCartDims();
 }
 
 // ══ INIT ══
