@@ -146,6 +146,12 @@ table.matrix td.rh{font-size:11px;color:var(--ink);font-weight:500;padding:3px 8
 table.matrix td{padding:2px;text-align:center}
 .mcell{display:inline-block;padding:4px 6px;border-radius:5px;font-weight:600;cursor:pointer;font-variant-numeric:tabular-nums;min-width:54px;font-size:11px;line-height:1.3;text-align:center}
 .mcell.empty{background:var(--border);color:var(--ink4);cursor:default}
+table.matrix th.rh-total{text-align:center;font-weight:700;color:var(--ink2);min-width:60px}
+.mcell-total{display:inline-block;padding:4px 6px;border-radius:5px;font-weight:700;font-variant-numeric:tabular-nums;min-width:54px;font-size:11px;line-height:1.3;text-align:center;background:var(--border);color:var(--ink)}
+tr.matrix-total-row td.rh{font-weight:700}
+tr.matrix-total-row{border-top:2px solid var(--border)}
+.mcell-grand{background:var(--blue-dark);color:#fff}
+body.dark .mcell-grand{background:var(--blue);color:#0B1220}
 .matrix-legend{display:flex;gap:10px;flex-wrap:wrap;margin-top:10px}
 .matrix-legend span{display:flex;align-items:center;gap:4px;font-size:11px;color:var(--ink3)}
 .matrix-legend .sw{width:12px;height:12px;border-radius:3px;border:1px solid rgba(0,0,0,.08)}
@@ -1446,22 +1452,33 @@ function renderMatrix(){
 
   let h='<thead><tr><th class="rh">Atraso \\ Valor</th>';
   VAL_LABELS.forEach(v=>{h+=`<th>${v}</th>`;});
-  h+='</tr></thead><tbody>';
+  h+='<th class="rh-total">Total</th></tr></thead><tbody>';
+  const colNao=new Array(VAL_LABELS.length).fill(0), colTot=new Array(VAL_LABELS.length).fill(0);
+  const cellDisp=(nao,tot)=>tot===0?'—':mMode==='nao'?fmt(nao):mMode==='acion'?fmt(tot-nao):((tot-nao)/tot*100).toFixed(1)+'%';
   matrix.forEach((row,ai)=>{
     // Ocultar linha "Acordo" quando toggle showAcordos estiver desativado
     if(!showAcordos && D.fa_labels && D.fa_labels[ai] === 'Acordo') return;
     h+=`<tr><td class="rh">${ad.atraso[ai]?ad.atraso[ai].label:D.fa_labels[ai]}</td>`;
+    let rowNao=0, rowTot=0;
     row.forEach(([nao,tot],vi)=>{
       const s=cellStyle(nao,tot,maxN);
       const isSel=mSel&&mSel.ai===ai&&mSel.vi===vi;
-      const disp=!s?'—':mMode==='nao'?fmt(nao):mMode==='acion'?fmt(tot-nao):((tot-nao)/tot*100).toFixed(1)+'%';
+      const disp=!s?'—':cellDisp(nao,tot);
       const ol=isSel?'outline:2px solid #1D4ED8;outline-offset:1px;':'';
       h+=!s?`<td><span class="mcell empty">${disp}</span></td>`
            :`<td><span class="mcell" style="background:${s.bg};color:${s.co};${ol}" onclick="clickMatrix(${ai},${vi})">${disp}</span></td>`;
+      rowNao+=nao; rowTot+=tot;
+      colNao[vi]+=nao; colTot[vi]+=tot;
     });
+    h+=`<td><span class="mcell-total">${cellDisp(rowNao,rowTot)}</span></td>`;
     h+='</tr>';
   });
   h+='</tbody>';
+  const grandNao=colNao.reduce((a,b)=>a+b,0), grandTot=colTot.reduce((a,b)=>a+b,0);
+  h+='<tfoot><tr class="matrix-total-row"><td class="rh">Total</td>';
+  colNao.forEach((nao,vi)=>{ h+=`<td><span class="mcell-total">${cellDisp(nao,colTot[vi])}</span></td>`; });
+  h+=`<td><span class="mcell-total mcell-grand">${cellDisp(grandNao,grandTot)}</span></td>`;
+  h+='</tr></tfoot>';
   el.innerHTML=h;
   const maxNleg = maxN;
   const items=mMode==='nao'
