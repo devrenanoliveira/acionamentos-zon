@@ -453,13 +453,26 @@ tel_cnt = (acion_valid[acion_valid["_is_tel"]]
            .groupby("_cpf").size()
            .rename("_qtd_tel"))
 
+# Contagem de acionamentos feitos especificamente pela assessoria ATUAL do
+# cliente (join por CPF + Assessoria, não só CPF) — usada no analítico (r[16])
+# pra manter consistência com o "sem acionamento" por assessoria da Matriz
+# (by_assessoria abaixo), que já usa essa mesma lógica de filtro. r[10]/_qtd
+# continua sendo o histórico GLOBAL (qualquer assessoria que já tocou o CPF);
+# _qtd_own só conta o que a assessoria que hoje tem o cliente já fez ela mesma.
+own_cnt = (acion_valid
+           .groupby(["_cpf", "_as"])
+           .size()
+           .rename("_qtd_own"))
+
 cart = (cart
         .join(acion_cnt,  on="_cpf")
         .join(ultimo_st,  on="_cpf")
         .join(freq_st,    on="_cpf")
-        .join(tel_cnt,    on="_cpf"))
+        .join(tel_cnt,    on="_cpf")
+        .join(own_cnt,    on=["_cpf", "_as"]))
 cart["_qtd"]      = cart["_qtd"].fillna(0).astype(int)
 cart["_qtd_tel"]  = cart["_qtd_tel"].fillna(0).astype(int)
+cart["_qtd_own"]  = cart["_qtd_own"].fillna(0).astype(int)
 cart["_ultimo"]   = cart["_ultimo"].fillna("").astype(str)
 cart["_freq_st"]  = cart["_freq_st"].fillna("").astype(str)
 cart["_acionado"] = cart["_qtd"] > 0
@@ -536,7 +549,8 @@ if by_assessoria:
 #  Montar YYYY-MM-analitico.json
 #  Array plano — formato lido diretamente por ANALITICO.filter(...)
 #  [CPF, Nome, Tipo, Dias, fa_idx, Saldo, fv_idx,
-#   ag_idx, uf_idx, Cidade, QtdAcion, UltimoStatus, StatusFreq, as_idx, is_acordo, QtdTel]
+#   ag_idx, uf_idx, Cidade, QtdAcion, UltimoStatus, StatusFreq, as_idx, is_acordo,
+#   QtdTel, QtdAcionAssessoriaAtual]
 # ================================================================
 print("  Montando analítico...")
 rows = []
@@ -558,6 +572,7 @@ for _, r in cart.iterrows():
         int(r["_as_idx"]),                  # 13 as_idx
         int(r["_is_acordo"]),               # 14 is_acordo (1=acordo, 0=normal)
         int(r["_qtd_tel"]),                 # 15 qtd_tel  (acionamentos telefônicos)
+        int(r["_qtd_own"]),                 # 16 qtd_own  (acionamentos pela assessoria ATUAL do cliente)
     ])
 
 print(f"  → {len(rows):,} registros no analítico")
