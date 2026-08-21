@@ -264,6 +264,8 @@ body.dark .an-as{color:#FB923C}
 .fb-clear:hover{background:var(--bg)}
 .filter-notice{font-size:11.5px;color:var(--ink3);background:rgba(59,130,246,.06);border:1px solid rgba(59,130,246,.18);border-radius:7px;padding:8px 12px;margin-bottom:12px;line-height:1.5}
 body.dark .filter-notice{background:rgba(59,130,246,.08)}
+.colab-tab-banner{font-size:12px;color:var(--ink3);background:rgba(217,119,6,.07);border:1px solid rgba(217,119,6,.22);border-radius:7px;padding:9px 12px;margin-bottom:14px;line-height:1.5}
+body.dark .colab-tab-banner{background:rgba(217,119,6,.1)}
 /* CARTEIRA SUB-TABS */
 .sub-tabs{display:flex;gap:6px;margin-bottom:16px;flex-wrap:wrap}
 .sub-btn{padding:6px 16px;font-size:12px;border:1.5px solid var(--border);border-radius:6px;background:var(--card);color:var(--ink3);cursor:pointer;font-weight:500;transition:all .15s}
@@ -502,13 +504,14 @@ body.dark .filter-notice{background:rgba(59,130,246,.08)}
       <button class="sub-btn" onclick="showCarteiraSub('renda',this)">Faixa de Renda</button>
       <button class="sub-btn" onclick="showCarteiraSub('score',this)">Score Fatura</button>
       <button class="sub-btn" onclick="showCarteiraSub('agrupador',this)">Carteira Interna</button>
+      <button class="sub-btn" id="sub-btn-colaboradores" onclick="showCarteiraSub('colaboradores',this)" style="display:none">🏢 Colaboradores</button>
     </div>
     <div class="cv-toggle" id="cv-toggle">
       <button id="cv-btn-qtd" class="cv-toggle-btn active" onclick="setCarteiraViewMode('qtd')">🔢 Quantidade</button>
       <button id="cv-btn-valor" class="cv-toggle-btn" onclick="setCarteiraViewMode('valor')">💰 Valor (R$)</button>
     </div>
   </div>
-  <div class="filter-notice" id="fn-c-dims" style="display:none">ℹ Filtro de Tipo de Ação/Canal-Motivo ativo — as novas visões (Gênero, Faixa Etária, Categoria Profissão, Faixa de Renda, Score Fatura, Carteira Interna) recalculam a partir dos dados individuais; Faixas de Atraso/Valor/Segmentos continuam mostrando os totais consolidados (não filtrados por tipo/motivo).</div>
+  <div class="filter-notice" id="fn-c-dims" style="display:none">ℹ Filtro de Tipo de Ação/Canal-Motivo ativo — as novas visões (Gênero, Faixa Etária, Categoria Profissão, Faixa de Renda, Score Fatura, Carteira Interna, Colaboradores) recalculam a partir dos dados individuais; Faixas de Atraso/Valor/Segmentos continuam mostrando os totais consolidados (não filtrados por tipo/motivo).</div>
 
   <!-- Sub: Faixas de Atraso -->
   <div id="csub-atraso" class="sub-panel active">
@@ -620,6 +623,21 @@ body.dark .filter-notice{background:rgba(59,130,246,.08)}
     </div>
     <div class="sec-label" style="margin-top:4px">Detalhe</div>
     <div id="c-agrupador-table"></div>
+  </div>
+
+  <!-- Sub: Colaboradores (novo em 21/08/2026) — overview da carteira restrita
+       aos clientes que também são colaboradores do grupo (cruzamento por CPF
+       com a planilha de RH), no mesmo template de Faixas de Atraso. Só aparece
+       quando o mês tem n_funcionarios > 0 (ver toggleColabTab()). -->
+  <div id="csub-colaboradores" class="sub-panel">
+    <div class="colab-tab-banner">🏢 Visão restrita aos clientes da carteira que também são colaboradores do Grupo Zonta (cruzamento por CPF com a planilha de RH) — distribuição por faixa de atraso, mesma leitura das demais sub-abas.</div>
+    <div class="kpi-grid" id="kpi-c-colaboradores"></div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;align-items:start">
+      <div><div class="sec-label">Distribuição por faixa de atraso — % dos colaboradores devedores</div><div id="c-colaboradores-bars"></div></div>
+      <div><div class="sec-label">Composição</div><div class="chart-wrap" style="height:260px"><canvas id="chart-c-colaboradores"></canvas></div></div>
+    </div>
+    <div class="sec-label" style="margin-top:4px">Detalhe por faixa de atraso</div>
+    <div id="c-colaboradores-table"></div>
   </div>
 </div>
 
@@ -2411,19 +2429,26 @@ const CART_DIMS = {
   renda:     {key:'faixa_renda',    analIdx:20, labelsKey:'renda_labels'},
   score:     {key:'score_banda',    analIdx:21, labelsKey:'score_labels'},
   agrupador: {key:'agrupador',      analIdx:7,  labelsKey:'ag_list'},
+  // Colaboradores (21/08/2026): não é uma categoria nova por cliente — é a
+  // carteira restrita a quem bate com a planilha de RH (r[24]===1), bucketada
+  // pela MESMA faixa de atraso (r[4]/fa_labels) já usada em "atraso". Por isso
+  // usa analIdx:4 (fa_idx, sempre presente) + um preFilter extra que os outros
+  // dims não têm — ver computeFilteredDim().
+  colaboradores: {key:'colaboradores', analIdx:4, labelsKey:'fa_labels', preFilter:r=>r[24]===1},
 };
 let cDimCharts = {};
 
 // Recalcula uma dimensão a partir do ANALITICO, respeitando os mesmos filtros
 // que computeFilteredMatrix() já aplica (Assessoria, Tipo/Motivo, Acordos,
 // r[16]/qtd_own quando há assessoria filtrada) — genérico por índice de campo.
-function computeFilteredDim(fieldIdx, labels){
+function computeFilteredDim(fieldIdx, labels, preFilter){
   if(!ANALITICO || !D) return null;
   const n = labels.length;
   const rows = labels.map(l=>({label:l,total:0,acion:0,nao:0,saldo:0}));
   const asFilter = currentAs !== null ? currentAs : null;
   const hasOwnQtd = ANALITICO.length > 0 && ANALITICO[0][16] !== undefined;
   ANALITICO.forEach(r=>{
+    if(preFilter && !preFilter(r)) return; // ex: Colaboradores — só r[24]===1
     if(asFilter !== null && r[13] !== undefined && r[13] !== asFilter) return;
     if(!showAcordos && r[14] === 1) return; // excluir clientes em acordo
     const di = r[fieldIdx];
@@ -2453,8 +2478,10 @@ function getCartDimRows(dimId){
   const cfg = CART_DIMS[dimId];
   const filterActive = !!(currentTipo || currentMotivo);
   const hasDimField = ANALITICO && ANALITICO.length && ANALITICO[0][cfg.analIdx] !== undefined;
+  // cfg.preFilter (só existe em "Colaboradores") é repassado direto — para as
+  // outras 5 dims fica undefined e computeFilteredDim() o ignora normalmente.
   if(filterActive && anInited && hasDimField){
-    return computeFilteredDim(cfg.analIdx, D[cfg.labelsKey]||[]);
+    return computeFilteredDim(cfg.analIdx, D[cfg.labelsKey]||[], cfg.preFilter);
   }
   const ad = getAD();
   return (showAcordos ? ad[cfg.key] : ad[cfg.key+'_sem_acordo']) || ad[cfg.key] || [];
@@ -2475,9 +2502,13 @@ function renderCartDim(dimId, title){
   const piorIdx  = ativos.reduce((mi,r,i)=>(ativos[mi]&&r.pct<ativos[mi].pct)?i:mi, 0);
   const pior = ativos[piorIdx] || {label:'—',pct:0};
 
+  // "Colaboradores" é um subconjunto da carteira (não a carteira toda), então o
+  // 1º KPI usa um rótulo próprio em vez de "Total carteira" — evita confundir
+  // "total de colaboradores devedores" com "total da carteira".
+  const kpiTotalLabel = dimId==='colaboradores' ? 'Total colaboradores' : 'Total carteira';
   const kpiEl = document.getElementById('kpi-c-'+dimId);
   if(kpiEl) kpiEl.innerHTML =
-    kpiHtml('Total carteira', fmtM(total), 'blue', '') +
+    kpiHtml(kpiTotalLabel, fmtM(total), 'blue', '') +
     kpiHtml('Maior '+title.toLowerCase(), maiorF.label, 'amber', fmtM(metric(maiorF))) +
     kpiHtml('Pior cobertura', pior.pct.toFixed(1)+'%', pior.pct<85?'red':'green', pior.label) +
     kpiHtml('Sem contato', fmt(naoTotal), naoTotal>0?'red':'green', 'clientes não acionados');
@@ -2533,6 +2564,13 @@ function renderAllCartDims(){
   renderCartDim('renda',     'Faixa de Renda');
   renderCartDim('score',     'Score Fatura');
   renderCartDim('agrupador', 'Carteira');
+  // Sub-aba "Colaboradores" (21/08/2026): só existe/renderiza quando o mês tem
+  // n_funcionarios>0 — mesmo padrão gracioso do botão "🏢 Colaborador" no
+  // Analítico (JSON sem planilha de RH não quebra nada, só fica sem a aba).
+  const showColabTab = (D.n_funcionarios||0) > 0;
+  const colabBtn = document.getElementById('sub-btn-colaboradores');
+  if(colabBtn) colabBtn.style.display = showColabTab ? '' : 'none';
+  if(showColabTab) renderCartDim('colaboradores', 'Faixa de Atraso');
 }
 
 function renderCarteira(){

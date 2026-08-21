@@ -544,6 +544,17 @@ def calc_block(df_c: pd.DataFrame, df_a: pd.DataFrame) -> dict:
     agrupador            = calc_dim(c,            "_ag_idx",      ag_list)
     agrupador_sem_acordo = calc_dim(c_sem_acordo, "_ag_idx",      ag_list)
 
+    # ── Overview de Colaboradores devedores (21/08/2026) ─────────
+    # Mesmo shape/template das 6 dimensões acima, mas em vez de uma categoria
+    # nova, é a carteira restrita a quem bate com a planilha de RH
+    # (_is_funcionario==1), bucketada pela mesma faixa de atraso (_fa) já usada
+    # em "atraso" — dá o mesmo overview (KPIs + distribuição + cobertura) só
+    # que olhando exclusivamente para os clientes que também são colaboradores.
+    # Coluna sempre existe (fallback 0 pra todo mundo quando não há planilha de
+    # RH na pasta — ver Seção 7 do doc do projeto), então nunca quebra aqui.
+    colaboradores            = calc_dim(c[c["_is_funcionario"] == 1],            "_fa", FA_LABELS)
+    colaboradores_sem_acordo = calc_dim(c_sem_acordo[c_sem_acordo["_is_funcionario"] == 1], "_fa", FA_LABELS)
+
     # ── Matriz 2D [fa_idx][fv_idx] = [nao, total] ───────────────
     grp = (c.groupby(["_fa", "_fv"])
             .agg(tot=("_cpf", "count"), acion_sum=("_acionado", "sum"))
@@ -640,6 +651,7 @@ def calc_block(df_c: pd.DataFrame, df_a: pd.DataFrame) -> dict:
         "faixa_renda": faixa_renda, "faixa_renda_sem_acordo": faixa_renda_sem_acordo,
         "score_banda": score_banda, "score_banda_sem_acordo": score_banda_sem_acordo,
         "agrupador": agrupador, "agrupador_sem_acordo": agrupador_sem_acordo,
+        "colaboradores": colaboradores, "colaboradores_sem_acordo": colaboradores_sem_acordo,
     }
 
 
