@@ -1883,8 +1883,12 @@ function anFilter(){
   // pressupõe pelo menos 1 acionamento) — o select local sempre volta pro valor
   // "0" a cada renderização da aba, então corrige automaticamente pra "Todos"
   // sempre que um filtro global estiver ativo, evitando "0 contratos" silencioso.
+  // Mesmo problema reproduzido em 21/08/2026 com o toggle local "🏢 Colaborador":
+  // a maioria dos clientes-colaborador já foi acionada pelo menos uma vez, então
+  // "Sem acionamento (0)" + Colaborador combinados também zeravam o resultado —
+  // estendido o mesmo auto-correção para cobrir esse caso.
   const qtdElAuto = document.getElementById('an-qtd');
-  if(qtdElAuto && qtdElAuto.value==='0' && (currentTipo || currentMotivo)){
+  if(qtdElAuto && qtdElAuto.value==='0' && (currentTipo || currentMotivo || anColab)){
     qtdElAuto.value = '';
   }
   const FA_LABELS = D.fa_labels||[];
