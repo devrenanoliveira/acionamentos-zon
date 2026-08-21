@@ -15,7 +15,7 @@ Uso:
   4. Suba os 3 arquivos gerados na pasta data/ do GitHub
 """
 
-import os, sys, json
+import os, sys, json, re
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from collections import defaultdict
@@ -345,6 +345,73 @@ catprof_counts = cart["_catprof"].value_counts()
 catprof_list   = catprof_counts.index.tolist()
 catprof_map    = {c: i for i, c in enumerate(catprof_list)}
 cart["_catprof_idx"] = cart["_catprof"].map(catprof_map).fillna(0).astype(int)
+
+# ── Colaborador (funcionário do Grupo Zonta) — cruzamento por CPF ──
+# Novo em 21/08/2026, a pedido do usuário: identificar quais clientes da
+# carteira de cobrança são também colaboradores do grupo, para uma campanha
+# de cobrança interna. Cruzamento feito SÓ por CPF — nenhum outro campo da
+# planilha de RH (salário, data de nascimento) é usado ou exposto no
+# dashboard. Arquivo é OPCIONAL: se não estiver na pasta, a marcação fica
+# zerada para todo mundo e o resto do script roda normalmente (mesmo padrão
+# de tolerância já usado pro Collection Score sem scikit-learn).
+def norm_cpf(v) -> str:
+    s = re.sub(r"\D", "", str(v)) if v is not None else ""
+    return s.zfill(11) if s else ""
+
+colab_path = None
+for p in sorted(SCRIPT_DIR.glob("*.xlsx")):
+    if "colaborador" in p.name.lower():
+        colab_path = p
+        break
+
+colab_map = {}   # cpf_norm -> (filial, cargo)
+if colab_path:
+    try:
+        colab_df = pd.read_excel(colab_path, engine="openpyxl")
+        cpf_col    = find_col(colab_df, ["numcpf", "cpf", "cpf/cnpj"])
+        filial_col = find_col(colab_df, ["nomfil", "filial", "nome filial"])
+        cargo_col  = find_col(colab_df, ["titred", "cargo", "titulo reduzido"])
+        if not cpf_col:
+            print(f"  ⚠ Colaboradores: {colab_path.name} não tem coluna de CPF reconhecível "
+                  f"({list(colab_df.columns)}) — marcação de colaborador fica zerada.")
+        else:
+            colab_df["_cpf_norm"] = colab_df[cpf_col].apply(norm_cpf)
+            colab_df = colab_df[colab_df["_cpf_norm"] != ""].drop_duplicates(subset="_cpf_norm")
+            for _, row in colab_df.iterrows():
+                colab_map[row["_cpf_norm"]] = (
+                    str(row[filial_col]).strip() if filial_col and pd.notna(row[filial_col]) else "",
+                    str(row[cargo_col]).strip()  if cargo_col  and pd.notna(row[cargo_col])  else "",
+                )
+            print(f"  Colaboradores: {colab_path.name} — {len(colab_map):,} CPFs distintos carregados "
+                  f"(Filial:{filial_col}  Cargo:{cargo_col})")
+    except Exception as e:
+        print(f"  ⚠ Falha ao ler planilha de colaboradores ({colab_path.name}): {e} "
+              f"— marcação de colaborador fica zerada.")
+        colab_map = {}
+else:
+    print("  (nenhuma planilha de colaboradores — nome do arquivo precisa conter "
+          "\"colaborador\" — encontrada na pasta; marcação de colaborador fica zerada, "
+          "não bloqueia a geração dos outros JSONs)")
+
+cart["_cpf_norm"]       = cart["_cpf"].apply(norm_cpf)
+cart["_is_funcionario"] = cart["_cpf_norm"].map(lambda c: 1 if c in colab_map else 0)
+cart["_filial"] = cart["_cpf_norm"].map(lambda c: colab_map.get(c, ("", ""))[0])
+cart["_cargo"]  = cart["_cpf_norm"].map(lambda c: colab_map.get(c, ("", ""))[1])
+
+filial_list = sorted(cart.loc[cart["_is_funcionario"] == 1, "_filial"].unique().tolist())
+filial_map  = {f: i for i, f in enumerate(filial_list)}
+cargo_list  = sorted(cart.loc[cart["_is_funcionario"] == 1, "_cargo"].unique().tolist())
+cargo_map   = {c: i for i, c in enumerate(cargo_list)}
+
+cart["_filial_idx"] = cart.apply(
+    lambda r: filial_map.get(r["_filial"], -1) if r["_is_funcionario"] == 1 else -1, axis=1)
+cart["_cargo_idx"] = cart.apply(
+    lambda r: cargo_map.get(r["_cargo"], -1) if r["_is_funcionario"] == 1 else -1, axis=1)
+
+n_funcionarios = int(cart["_is_funcionario"].sum())
+saldo_funcionarios = round(float(cart.loc[cart["_is_funcionario"] == 1, "_saldo"].sum()), 2)
+print(f"  → {n_funcionarios:,} clientes da carteira identificados como colaborador "
+      f"(saldo total R$ {saldo_funcionarios:,.2f})")
 
 
 # ================================================================
@@ -824,6 +891,11 @@ mes_json: dict = {
     # nunca distorce valor (saldo=0)
     "n_sem_atraso": n_sem_atraso,
     "fa_sem_atraso_idx": FA_SEM_ATRASO_IDX,
+    # Colaborador (funcionário do grupo) — novo em 21/08/2026
+    "filial_list":    filial_list,
+    "cargo_list":     cargo_list,
+    "n_funcionarios": n_funcionarios,
+    "saldo_funcionarios": saldo_funcionarios,
 }
 if by_assessoria:
     mes_json["by_assessoria"] = by_assessoria
@@ -838,7 +910,8 @@ if coll_meta:
 #   ag_idx, uf_idx, Cidade, QtdAcion, UltimoStatus, StatusFreq, as_idx, is_acordo,
 #   QtdTel, QtdAcionAssessoriaAtual,
 #   sexo_idx, faixa_etaria_idx, categoria_prof_idx, faixa_renda_idx, score_idx,
-#   collection_score, collection_band]
+#   collection_score, collection_band,
+#   is_funcionario, filial_idx, cargo_idx]
 # ================================================================
 print("  Montando analítico...")
 rows = []
@@ -868,6 +941,9 @@ for _, r in cart.iterrows():
         int(r["_score_idx"]),               # 21 score_idx
         round(float(r["_collscore"]), 1),   # 22 collection_score (percentil 0-100, novo em 20/08/2026)
         int(r["_collband"]),                # 23 collection_band (0=A alta propensão ... 3=D baixa propensão)
+        int(r["_is_funcionario"]),          # 24 is_funcionario (novo em 21/08/2026)
+        int(r["_filial_idx"]),              # 25 filial_idx (-1 se não é funcionário)
+        int(r["_cargo_idx"]),               # 26 cargo_idx (-1 se não é funcionário)
     ])
 
 print(f"  → {len(rows):,} registros no analítico")

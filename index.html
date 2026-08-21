@@ -666,6 +666,7 @@ let csFiltered = [], csPage = 1, csSortCol = 22, csSortDir = -1; // ordena por s
 let csSoAcordo = false; // toggle local: incluir na lista quem já está em acordo (default: fora)
 const CS_PAGE = 50;
 let anAcordo = false; // filtro: mostrar apenas clientes com acordo (aba Analítico)
+let anColab = false; // filtro: mostrar apenas clientes que também são colaboradores (aba Analítico, novo em 21/08/2026)
 let anUseOwnQtd = false; // true quando o filtro "Qtd. Acionamentos" está usando a contagem por assessoria (r[16]) em vez da global (r[10]) — ver anFilter()
 let showAcordos = false; // toggle: incluir clientes em acordo nas métricas gerais
 let selAtraso = null, selValor = null;
@@ -1817,6 +1818,11 @@ function renderAnalitico(){
     ? `<option value="">Todas as assessorias</option>${AS_LIST.map((a,i)=>`<option value="${i}">${a}</option>`).join('')}`
     : '';
 
+  // Colaborador (funcionário do grupo) — novo em 21/08/2026. Coluna só aparece
+  // quando o mês tem pelo menos 1 cliente identificado como colaborador
+  // (n_funcionarios vem do JSON mensal; ausente/0 em meses sem a planilha de RH).
+  const showColab = (D.n_funcionarios||0) > 0;
+
   const html = `
     <div class="an-filters">
       <input type="text" id="an-search" class="an-search" placeholder="Buscar por CPF ou Nome…" oninput="anFilter()">
@@ -1836,6 +1842,7 @@ function renderAnalitico(){
         <option value="7">7+ acionamentos</option>
       </select>
       <button id="btn-acordo" class="btn-acordo ${anAcordo?'active':''}" onclick="toggleAcordo()" title="Clientes com acordo de pagamento (Ativo + dias=0)">🤝 Acordo</button>
+      ${showColab?`<button id="btn-colab" class="btn-acordo ${anColab?'active':''}" onclick="toggleColab()" title="Clientes da carteira que também são colaboradores do grupo (cruzamento por CPF)">🏢 Colaborador</button>`:''}
       <button class="btn-clear" onclick="anClear()">Limpar</button>
       <button class="btn-export" onclick="anExport()">⬇ Excel</button>
     </div>
@@ -1851,6 +1858,7 @@ function renderAnalitico(){
           <th class="s" id="th-qtd" onclick="anSort(10)">Qtd. Acion.</th>
           <th>Último Status</th><th>Status + Freq.</th>
           ${AS_LIST.length>1?'<th>Assessoria</th>':''}
+          ${showColab?'<th>Colaborador</th><th>Filial</th><th>Cargo</th>':''}
         </tr></thead>
         <tbody id="an-tbody"></tbody>
       </table>
@@ -1939,6 +1947,9 @@ function anFilter(){
     // clientes em acordo por padrão — a menos que o usuário já tenha pedido para
     // isolá-los via anAcordo acima
     if(!anAcordo && !showAcordos && isAcordoRow) return false;
+    // Filtro "🏢 Colaborador": isola só quem bateu com a planilha de RH por CPF
+    // (r[24]===1). Novo em 21/08/2026 — ver toggleColab().
+    if(anColab && r[24]!==1) return false;
     return true;
   });
   if(anSortCol>=0) anApplySort();
@@ -1963,6 +1974,12 @@ function toggleAcordo(){
   if(btn) btn.classList.toggle('active', anAcordo);
   anPage=1; anFilter();
 }
+function toggleColab(){
+  anColab = !anColab;
+  const btn = document.getElementById('btn-colab');
+  if(btn) btn.classList.toggle('active', anColab);
+  anPage=1; anFilter();
+}
 
 function anClear(){
   ['an-search','an-fa','an-fv','an-ag','an-uf','an-tipo','an-as'].forEach(id=>{
@@ -1980,6 +1997,10 @@ function anClear(){
   anAcordo = false;
   const btnAcordo = document.getElementById('btn-acordo');
   if(btnAcordo) btnAcordo.classList.remove('active');
+  // Limpar filtro de colaborador
+  anColab = false;
+  const btnColab = document.getElementById('btn-colab');
+  if(btnColab) btnColab.classList.remove('active');
   // Limpar também filtros globais tipo/motivo
   currentTipo=''; currentMotivo='';
   const ts=document.getElementById('tipo-select'); if(ts) ts.value='';
@@ -1996,17 +2017,22 @@ function anRender(){
   const AG_LIST   = D?D.ag_list||[]:[];
   const UF_LIST   = D?D.uf_list||[]:[];
   const AS_LIST   = D?D.assessoria_list||[]:[];
+  const FILIAL_LIST = D?D.filial_list||[]:[];
+  const CARGO_LIST  = D?D.cargo_list||[]:[];
   const showAs    = AS_LIST.length > 1;
+  const showColab = D?(D.n_funcionarios||0) > 0:false;
   const total=anFiltered.length;
   const pages=Math.max(1,Math.ceil(total/AN_PAGE));
   if(anPage>pages) anPage=pages;
   const start=(anPage-1)*AN_PAGE, end=Math.min(start+AN_PAGE,total);
   const sumEl=document.getElementById('an-summary');
+  const colabSaldo = anColab ? anFiltered.reduce((s,r)=>s+(r[5]||0),0) : 0;
   if(sumEl) sumEl.innerHTML=
     `<span class="an-badge">${fmt(total)}</span> contratos`+
     (total<ANALITICO.length?` <span style="color:#64748B">(de ${fmt(ANALITICO.length)} total)</span>`:'')+
     ` &nbsp;·&nbsp; pág. ${anPage} de ${fmt(pages)}`+
-    (anUseOwnQtd?` <span style="color:#D97706" title="Coluna Qtd. Acion. e o filtro de quantidade contam só os acionamentos feitos por essa assessoria — não o histórico global do cliente">⚠ Qtd. considera só esta assessoria</span>`:'');
+    (anUseOwnQtd?` <span style="color:#D97706" title="Coluna Qtd. Acion. e o filtro de quantidade contam só os acionamentos feitos por essa assessoria — não o histórico global do cliente">⚠ Qtd. considera só esta assessoria</span>`:'')+
+    (anColab?` &nbsp;·&nbsp; <span style="color:#0F2461;font-weight:600">🏢 Saldo colaboradores: ${fmtSaldo(colabSaldo)}</span>`:'');
   const tbody=document.getElementById('an-tbody');
   if(tbody) tbody.innerHTML=anFiltered.slice(start,end).map(r=>`<tr>
     <td class="an-cpf">${fmtCPF(r[0])}</td>
@@ -2023,6 +2049,7 @@ function anRender(){
     <td>${stChip(r[11])}</td>
     <td>${stChip(r[12])}</td>
     ${showAs?`<td class="an-as">${AS_LIST[r[13]]||''}</td>`:''}
+    ${showColab?`<td>${r[24]===1?'<span class="chip chip-g">🏢 Sim</span>':''}</td><td>${r[25]>=0?(FILIAL_LIST[r[25]]||''):''}</td><td>${r[26]>=0?(CARGO_LIST[r[26]]||''):''}</td>`:''}
   </tr>`).join('');
   const pg=document.getElementById('an-pagination');
   if(!pg) return;
@@ -2050,16 +2077,20 @@ function anExport(){
   if(typeof XLSX==='undefined'){alert('Carregando biblioteca Excel, tente novamente.');return;}
   if(!ANALITICO||!D) return;
   const FA_LABELS=D.fa_labels||[],FV_LABELS=D.fv_labels||[],AG_LIST=D.ag_list||[],UF_LIST=D.uf_list||[],AS_LIST=D.assessoria_list||[];
+  const FILIAL_LIST=D.filial_list||[], CARGO_LIST=D.cargo_list||[];
   const STATUS_LABEL=D.status_label||{};
   const showAs = AS_LIST.length > 1;
+  const showColab = (D.n_funcionarios||0) > 0;
   const headers=['CPF/CNPJ','Nome','Tipo','Dias Atraso','Faixa Atraso','Saldo (R$)','Faixa Valor','Agrupador','UF','Cidade','Qtd Acionamentos','Qtd Tel','Qtd Digital','Último Status','Status + Frequente','Acordo'];
   if(showAs) headers.push('Assessoria');
+  if(showColab) headers.push('Colaborador','Filial','Cargo');
   const rows=anFiltered.map(r=>{
     const qtdTel = r[15]!==undefined ? r[15] : '';
     const qtdDig = r[15]!==undefined ? r[10]-r[15] : '';
     const acordo  = r[14]!==undefined ? (r[14]===1?'Sim':'Não') : '';
     const row=[r[0],r[1],r[2]==='J'?'PJ':'PF',r[3],FA_LABELS[r[4]]||r[4],r[5],FV_LABELS[r[6]]||r[6],AG_LIST[r[7]]||'',UF_LIST[r[8]]||'',r[9],r[10],qtdTel,qtdDig,STATUS_LABEL[r[11]]||r[11]||'',STATUS_LABEL[r[12]]||r[12]||'',acordo];
     if(showAs) row.push(AS_LIST[r[13]]||'');
+    if(showColab) row.push(r[24]===1?'Sim':'Não', r[25]>=0?(FILIAL_LIST[r[25]]||''):'', r[26]>=0?(CARGO_LIST[r[26]]||''):'');
     return row;
   });
   const wb=XLSX.utils.book_new();
