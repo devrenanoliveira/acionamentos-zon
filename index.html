@@ -79,6 +79,18 @@ body.dark .cs-band-card .cs-band-count{color:#fff}
 .cs-band-card .cs-band-pct{font-size:11.5px;color:#64748B;margin-top:2px}
 .cs-band-card .cs-band-saldo{font-size:11px;color:#64748B;margin-top:6px;border-top:1px dashed #E2E8F0;padding-top:6px}
 body.dark .cs-band-card .cs-band-saldo{border-top-color:#334155}
+.cs-band-card.band-N{border-top:4px solid #94A3B8}
+.cs-prop-hero{background:linear-gradient(135deg,#0F2461 0%,#1a3680 60%,#3B82F6 165%);border-radius:12px;padding:16px 20px;margin:22px 0 16px;color:#fff;display:flex;align-items:center;gap:14px;box-shadow:0 4px 14px rgba(15,36,97,.18)}
+.cs-prop-notice{font-size:12.5px;color:#64748B;background:rgba(148,163,184,.1);border:1px solid rgba(148,163,184,.28);border-radius:8px;padding:10px 13px;margin:22px 0 16px;line-height:1.6}
+.cs-cross-card{display:flex;align-items:center;gap:16px;background:linear-gradient(135deg,rgba(245,158,11,.13),rgba(245,158,11,.04));border:1.5px solid rgba(245,158,11,.4);border-radius:12px;padding:14px 18px;margin-bottom:16px}
+.cs-cross-icon{font-size:24px;flex-shrink:0}
+.cs-cross-title{font-size:13px;font-weight:800;color:var(--navy);margin-bottom:2px}
+body.dark .cs-cross-title{color:#fff}
+.cs-cross-sub{font-size:11.5px;color:#64748B;line-height:1.5}
+.cs-cross-count{font-size:26px;font-weight:800;color:var(--gold-dark,#B45309);font-variant-numeric:tabular-nums;margin-left:auto;text-align:right}
+.cs-cross-saldo{font-size:11.5px;color:#64748B;text-align:right}
+.cs-cross-btn{flex-shrink:0;font-size:11.5px;font-weight:700;background:var(--navy);color:#fff;border:none;border-radius:7px;padding:8px 14px;cursor:pointer;white-space:nowrap}
+.cs-cross-btn:hover{opacity:.88}
 /* ── LOADING ───────────────────────────────────────────────── */
 .loading-overlay{position:fixed;inset:0;background:var(--load-bg);display:flex;align-items:center;justify-content:center;z-index:9999;flex-direction:column;gap:12px;backdrop-filter:blur(2px)}
 .loading-overlay.hidden{display:none}
@@ -2139,8 +2151,15 @@ function csBandChip(band){
   return `<span class="chip ${CS_BAND_CHIP[band]||''}">${CS_BAND_SHORT[band]||'?'}</span>`;
 }
 
+function propBandChip(band){
+  const b = (band===undefined || band===null) ? -1 : band;
+  if(b===-1) return `<span class="chip" style="background:#E2E8F0;color:#64748B">Sem hist.</span>`;
+  return `<span class="chip ${CS_BAND_CHIP[b]||''}">${CS_BAND_SHORT[b]||'?'}</span>`;
+}
+
 function renderPropensao(){
   const meta = D.collection_score_meta;
+  const propMeta = D.propensao_meta;
   const el = document.getElementById('cs-content');
   if(!meta){
     el.innerHTML = `<div class="an-loading">⚠ Este mês não tem Collection Score calculado (JSON gerado antes de 20/08/2026, ou carteira sem casos suficientes de acordo para treinar o modelo).</div>`;
@@ -2180,14 +2199,42 @@ function renderPropensao(){
     </details>
     <div class="sec-label">Resumo por banda</div>
     <div class="cs-band-summary" id="cs-band-summary"></div>
+    ${propMeta ? `
+    <div class="cs-prop-hero">
+      <div class="cs-hero-icon">💳</div>
+      <div>
+        <div class="cs-hero-title">Propensão de Pagamento (30 dias) <span class="cs-hero-badge">Histórico real</span></div>
+        <div class="cs-hero-sub">Roda em paralelo ao Collection Score, sem substituí-lo — prevê a probabilidade de o cliente pagar
+        algo nos próximos ${propMeta.horizon_dias} dias, com base no histórico REAL de pagamento (não é proxy de acordo).
+        Validado fora do tempo — treinado num período, testado num período seguinte nunca visto pelo modelo.</div>
+      </div>
+    </div>
+    <div class="kpi-grid" style="margin-bottom:14px">
+      ${kpiHtml('AUC fora do tempo', propMeta.auc_oot, propMeta.auc_oot>=0.75?'green':propMeta.auc_oot>=0.6?'amber':'red', `treino ${propMeta.oot_cutoff_treino} → teste ${propMeta.oot_cutoff_teste}`)}
+      ${kpiHtml('Treinado com', fmt(propMeta.n_treino), '', `${fmt(propMeta.n_pos_treino)} pagaram em 30d (${(propMeta.n_pos_treino/propMeta.n_treino*100).toFixed(1)}%)`)}
+      ${kpiHtml('Escorável na carteira', `${propMeta.pct_escoravel}%`, '', `${fmt(propMeta.n_escoravel)} CPFs com histórico de pagamento`)}
+      ${kpiHtml('Base de dados', fmt(propMeta.n_pagamentos_historico), '', `${fmt(propMeta.n_cpfs_historico)} CPFs no histórico`)}
+    </div>
+    <div class="cs-cross-card" id="cs-cross-card"></div>
+    <div class="sec-label">Resumo por banda — Propensão de Pagamento</div>
+    <div class="cs-band-summary" id="cs-propband-summary"></div>
+    ` : `
+    <div class="cs-prop-notice">💳 <strong>Propensão de Pagamento (30 dias)</strong> não calculada para este mês — arquivo de histórico de pagamento
+    (Recuperação AAAA.csv) ausente ou insuficiente na geração deste JSON. Não bloqueia o Collection Score acima, que continua funcionando normalmente.</div>
+    `}
     <div class="cs-filters an-filters">
       <input type="text" id="cs-search" class="an-search" placeholder="Buscar por CPF ou Nome…" oninput="csFilter()">
       ${asOpts ? `<select id="cs-as" class="an-select" onchange="csFilter()">${asOpts}</select>` : ''}
       <select id="cs-fa" class="an-select" onchange="csFilter()"><option value="">Todas as faixas de atraso</option>${FA_LABELS.map((l,i)=>i<9?`<option value="${i}">${l}</option>`:'').join('')}</select>
       <select id="cs-band" class="an-select" onchange="csFilter()">
-        <option value="">Todas as bandas</option>
+        <option value="">Todas as bandas (Collection Score)</option>
         ${meta.band_labels.map((l,i)=>`<option value="${i}">${l}</option>`).join('')}
       </select>
+      ${propMeta ? `<select id="cs-prop-band" class="an-select" onchange="csFilter()">
+        <option value="">Todas as bandas (Propensão Pagto)</option>
+        ${propMeta.band_labels.map((l,i)=>`<option value="${i}">${l}</option>`).join('')}
+        <option value="-1">Sem histórico de pagamento</option>
+      </select>` : ''}
       <button id="btn-cs-acordo" class="btn-acordo ${csSoAcordo?'active':''}" onclick="csToggleAcordo()" title="Por padrão a lista mostra só quem ainda não fechou acordo (faz sentido priorizar). Ative pra incluir quem já está em acordo também.">🤝 Incluir já em acordo</button>
       <button class="btn-clear" onclick="csClear()">Limpar</button>
       <button class="btn-export" onclick="csExport()">⬇ Excel</button>
@@ -2199,6 +2246,7 @@ function renderPropensao(){
           <th>CPF/CNPJ</th><th>Nome</th>
           <th class="s" id="th-cs-score" onclick="csSort(22)">Collection Score</th>
           <th>Banda</th>
+          ${propMeta ? `<th class="s" id="th-cs-propscore" onclick="csSort(27)">Propensão Pagto (30d)</th><th>Banda Prop.</th>` : ''}
           <th>Faixa Atraso</th>
           <th class="s" id="th-cs-saldo" onclick="csSort(5)">Saldo (R$)</th>
           <th>Categoria Profissão</th><th>Faixa Etária</th><th>Score Fatura</th>
@@ -2251,10 +2299,22 @@ function csFilter(){
   if(!ANALITICO || !D) return;
   const base = csBaseFiltered();
   const band = document.getElementById('cs-band')?.value;
-  csFiltered = (band!=='' && band!==undefined) ? base.filter(r=>String(r[23])===band) : base;
+  const propBand = document.getElementById('cs-prop-band')?.value;
+  let filtered = base;
+  if(band!=='' && band!==undefined) filtered = filtered.filter(r=>String(r[23])===band);
+  if(propBand!=='' && propBand!==undefined) filtered = filtered.filter(r=>String(r[28]===undefined?-1:r[28])===propBand);
+  csFiltered = filtered;
   if(csSortCol>=0) csApplySort();
   csPage=1;
-  csRenderBandSummary(base);
+  // Cada resumo de banda mostra a distribuição completa considerando TODOS os
+  // outros filtros ativos (inclusive o filtro da OUTRA dimensão de banda), exceto
+  // a própria banda que ele representa — assim dá pra clicar num card sem perder
+  // o contexto do filtro atual da outra dimensão.
+  const baseForColl = (propBand!=='' && propBand!==undefined) ? base.filter(r=>String(r[28]===undefined?-1:r[28])===propBand) : base;
+  const baseForProp = (band!=='' && band!==undefined) ? base.filter(r=>String(r[23])===band) : base;
+  csRenderBandSummary(baseForColl);
+  csRenderPropBandSummary(baseForProp);
+  csRenderCrossCard(base);
   csRender();
 }
 
@@ -2281,15 +2341,82 @@ function csRenderBandSummary(base){
   }).join('');
 }
 
+function csRenderPropBandSummary(base){
+  const el = document.getElementById('cs-propband-summary');
+  if(!el) return;
+  const propMeta = D && D.propensao_meta;
+  if(!propMeta){ el.innerHTML=''; return; }
+  const total = base.length;
+  const letters = ['A','B','C','D'];
+  const buckets = [0,0,0,0], saldos = [0,0,0,0];
+  let semHistCount = 0, semHistSaldo = 0;
+  base.forEach(r=>{
+    const b = r[28]===undefined ? -1 : r[28];
+    if(b>=0&&b<=3){ buckets[b]++; saldos[b]+=(r[5]||0); }
+    else { semHistCount++; semHistSaldo+=(r[5]||0); }
+  });
+  const selectedBand = document.getElementById('cs-prop-band')?.value;
+  const bandCards = letters.map((letra,i)=>{
+    const label = (propMeta.band_labels[i]||letra).replace(/^.\s*—\s*/, '');
+    const pct = total>0 ? (buckets[i]/total*100).toFixed(1) : '0.0';
+    const isActive = selectedBand === String(i);
+    return `<div class="cs-band-card band-${letra}" style="${isActive?'border-color:var(--gold-light)':''};cursor:pointer" onclick="document.getElementById('cs-prop-band').value='${i}';csFilter()">
+      <div class="cs-band-label">Banda ${letra} — ${label}</div>
+      <div class="cs-band-count">${fmt(buckets[i])}</div>
+      <div class="cs-band-pct">${pct}% dos elegíveis filtrados</div>
+      <div class="cs-band-saldo">Saldo: ${fmtR$(saldos[i])}</div>
+    </div>`;
+  }).join('');
+  const pctSemHist = total>0 ? (semHistCount/total*100).toFixed(1) : '0.0';
+  const isSemHistActive = selectedBand === '-1';
+  const semHistCard = `<div class="cs-band-card band-N" style="${isSemHistActive?'border-color:var(--gold-light)':''};cursor:pointer" onclick="document.getElementById('cs-prop-band').value='-1';csFilter()">
+      <div class="cs-band-label">Sem histórico de pagamento</div>
+      <div class="cs-band-count">${fmt(semHistCount)}</div>
+      <div class="cs-band-pct">${pctSemHist}% dos elegíveis filtrados</div>
+      <div class="cs-band-saldo">Saldo: ${fmtR$(semHistSaldo)}</div>
+    </div>`;
+  el.innerHTML = bandCards + semHistCard;
+}
+
+// Card de destaque: cruza as duas métricas — quem é Banda A no Collection Score
+// (bom perfil pra converter em acordo) E Banda A na Propensão de Pagamento (bom
+// histórico real de pagamento) é a prioridade máxima de acionamento. Calculado
+// sobre TODOS os filtros ativos, exceto os dois seletores de banda — assim o
+// número não desaparece quando o usuário filtra por uma banda específica.
+function csRenderCrossCard(base){
+  const el = document.getElementById('cs-cross-card');
+  if(!el) return;
+  const propMeta = D && D.propensao_meta;
+  if(!propMeta){ el.innerHTML=''; return; }
+  let count = 0, saldo = 0;
+  base.forEach(r=>{
+    const collBand = r[23];
+    const propBand = r[28]===undefined ? -1 : r[28];
+    if(collBand===0 && propBand===0){ count++; saldo+=(r[5]||0); }
+  });
+  el.innerHTML = `
+    <div class="cs-cross-icon">🎯</div>
+    <div>
+      <div class="cs-cross-title">Prioridade Máxima — Banda A nos dois modelos</div>
+      <div class="cs-cross-sub">Bom perfil pra converter em acordo (Collection Score) <b>e</b> bom histórico real de pagamento
+      (Propensão de Pagamento) ao mesmo tempo — maior chance combinada de contato virar dinheiro em caixa.</div>
+    </div>
+    <div>
+      <div class="cs-cross-count">${fmt(count)}</div>
+      <div class="cs-cross-saldo">Saldo: ${fmtR$(saldo)}</div>
+    </div>
+    <button class="cs-cross-btn" onclick="document.getElementById('cs-band').value='0';document.getElementById('cs-prop-band').value='0';csFilter()">Ver esses clientes</button>`;
+}
+
 function csApplySort(){
   const c=csSortCol, d=csSortDir;
   csFiltered=[...csFiltered].sort((a,b)=>(a[c]>b[c]?1:a[c]<b[c]?-1:0)*d);
 }
 
 function csSort(col){
-  const thMap={22:'th-cs-score',5:'th-cs-saldo',10:'th-cs-qtd'};
+  const thMap={22:'th-cs-score',5:'th-cs-saldo',10:'th-cs-qtd',27:'th-cs-propscore'};
   Object.values(thMap).forEach(id=>{const e=document.getElementById(id);if(e)e.classList.remove('sort-asc','sort-desc');});
-  if(csSortCol===col) csSortDir*=-1; else { csSortCol=col; csSortDir = col===22?-1:1; }
+  if(csSortCol===col) csSortDir*=-1; else { csSortCol=col; csSortDir = (col===22||col===27)?-1:1; }
   const th=document.getElementById(thMap[col]);
   if(th) th.classList.add(csSortDir===1?'sort-asc':'sort-desc');
   csApplySort(); csPage=1; csRender();
@@ -2303,7 +2430,7 @@ function csToggleAcordo(){
 }
 
 function csClear(){
-  ['cs-search','cs-fa','cs-band'].forEach(id=>{ const el=document.getElementById(id); if(el) el.value=''; });
+  ['cs-search','cs-fa','cs-band','cs-prop-band'].forEach(id=>{ const el=document.getElementById(id); if(el) el.value=''; });
   if(currentAs !== null){
     const asEl=document.getElementById('cs-as');
     if(asEl) asEl.value=String(currentAs);
@@ -2315,7 +2442,7 @@ function csClear(){
   const btnA = document.getElementById('btn-cs-acordo');
   if(btnA) btnA.classList.remove('active');
   csSortCol=22; csSortDir=-1;
-  ['th-cs-score','th-cs-saldo','th-cs-qtd'].forEach(id=>{const e=document.getElementById(id);if(e)e.classList.remove('sort-asc','sort-desc');});
+  ['th-cs-score','th-cs-saldo','th-cs-qtd','th-cs-propscore'].forEach(id=>{const e=document.getElementById(id);if(e)e.classList.remove('sort-asc','sort-desc');});
   csFilter();
 }
 
@@ -2335,12 +2462,14 @@ function csRender(){
     `<span class="an-badge">${fmt(total)}</span> clientes elegíveis`+
     ` &nbsp;·&nbsp; pág. ${csPage} de ${fmt(pages)}`+
     (csSoAcordo?'':' <span style="color:#64748B">(já excluindo quem está em acordo)</span>');
+  const propMeta = D?D.propensao_meta:null;
   const tbody = document.getElementById('cs-tbody');
   if(tbody) tbody.innerHTML = csFiltered.slice(start,end).map(r=>`<tr>
     <td class="an-cpf">${fmtCPF(r[0])}</td>
     <td class="an-nome">${r[1]}</td>
     <td style="font-weight:700;font-variant-numeric:tabular-nums">${r[22].toFixed(1)}</td>
     <td>${csBandChip(r[23])}</td>
+    ${propMeta ? `<td style="font-weight:700;font-variant-numeric:tabular-nums">${r[28]===undefined||r[28]===-1?'—':(r[27]||0).toFixed(1)+'%'}</td><td>${propBandChip(r[28])}</td>` : ''}
     <td><span class="chip ${faChip(r[4])}">${FA_LABELS[r[4]]||r[4]}</span></td>
     <td class="an-saldo">${fmtSaldo(r[5])}</td>
     <td>${CATPROF_LIST[r[19]]||'—'}</td>
@@ -2370,10 +2499,18 @@ function csExport(){
   const CATPROF_LIST=D.catprof_list||[], IDADE_LABELS=D.faixa_etaria_labels||[], SCORE_LABELS=D.score_labels||[];
   const STATUS_LABEL=D.status_label||{};
   const showAs = AS_LIST.length > 1;
-  const headers=['CPF/CNPJ','Nome','Collection Score (0-100)','Banda','Dias Atraso','Faixa Atraso','Saldo (R$)','Categoria Profissão','Faixa Etária','Score Fatura','Qtd Acionamentos','Último Status'];
+  const propMeta = D.propensao_meta;
+  const headers=['CPF/CNPJ','Nome','Collection Score (0-100)','Banda'];
+  if(propMeta) headers.push('Propensão Pagto 30d (%)','Banda Propensão');
+  headers.push('Dias Atraso','Faixa Atraso','Saldo (R$)','Categoria Profissão','Faixa Etária','Score Fatura','Qtd Acionamentos','Último Status');
   if(showAs) headers.push('Assessoria');
   const rows=csFiltered.map(r=>{
-    const row=[r[0],r[1],r[22],CS_BAND_SHORT[r[23]]||'',r[3],FA_LABELS[r[4]]||r[4],r[5],CATPROF_LIST[r[19]]||'',IDADE_LABELS[r[18]]||'',SCORE_LABELS[r[21]]||'',r[10],STATUS_LABEL[r[11]]||r[11]||''];
+    const row=[r[0],r[1],r[22],CS_BAND_SHORT[r[23]]||''];
+    if(propMeta){
+      const pb = r[28]===undefined?-1:r[28];
+      row.push(pb===-1?'Sem histórico':r[27], pb===-1?'—':(CS_BAND_SHORT[pb]||''));
+    }
+    row.push(r[3],FA_LABELS[r[4]]||r[4],r[5],CATPROF_LIST[r[19]]||'',IDADE_LABELS[r[18]]||'',SCORE_LABELS[r[21]]||'',r[10],STATUS_LABEL[r[11]]||r[11]||'');
     if(showAs) row.push(AS_LIST[r[13]]||'');
     return row;
   });

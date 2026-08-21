@@ -839,6 +839,167 @@ except ImportError:
     cart["_collscore"] = 0.0
     cart["_collband"]  = 3
 
+# ================================================================
+#  Propensão de Pagamento (30 dias) — novo em 21/08/2026
+#  ------------------------------------------------------------
+#  Diferente do Collection Score acima (que usa acordo ativo como proxy),
+#  este modelo usa HISTÓRICO REAL de pagamento — arquivo(s) opcional(is)
+#  "Recuperação AAAA.csv" (um por ano, ex: Recuperação 2025.csv +
+#  Recuperação 2026.csv) — para prever a probabilidade de o cliente pagar
+#  algo nos próximos 30 dias. Metodologia por DATA DE CORTE, sem vazamento:
+#    • Features (estilo RFM): calculadas usando só pagamentos ANTERIORES
+#      ao corte — recência, tenure, frequência, valor médio/total, % via
+#      acordo, atraso médio, pagamentos nos últimos 90/180 dias.
+#    • Rótulo: 1 se o CPF pagou algo nos 30 dias seguintes ao corte.
+#    • Validação fora do tempo: treina num corte mais antigo, testa num
+#      corte independente mais recente (nunca visto) — é o AUC reportado.
+#    • Modelo de produção: retreinado no corte mais recente possível
+#      (hoje − 30d) e aplicado sobre o histórico completo até hoje para
+#      prever os próximos 30 dias a partir de agora.
+#  Validado em estudo standalone de 21/08/2026 (AUC out-of-time = 0,81,
+#  decil mais alto paga 54,5% das vezes vs. 1,6% no mais baixo) — ver
+#  claude/05_Acionamentos_carteira_Z-ON_card.md, Seção 7.
+#  Arquivo(s) OPCIONAL(is): se ausente(s) ou insuficiente(s), a marcação
+#  fica "sem histórico" pra todo mundo, sem bloquear o resto da geração
+#  (mesmo padrão de tolerância do Collection Score sem scikit-learn / da
+#  planilha de RH ausente para Colaboradores).
+#  RODA EM PARALELO ao Collection Score — não o substitui (decisão do
+#  usuário, 21/08/2026).
+# ================================================================
+print("  Calculando Propensão de Pagamento (30d)...")
+prop_meta = None
+cart["_propscore"] = 0.0
+cart["_propband"]  = -1   # -1 = sem histórico de pagamento (não escorável)
+
+recup_paths = [p for p in sorted(SCRIPT_DIR.glob("*.csv")) if "recupera" in p.name.lower()]
+if recup_paths:
+    try:
+        from sklearn.ensemble import HistGradientBoostingClassifier
+        from sklearn.metrics import roc_auc_score
+
+        PROP_COLS = ["Cliente","Tipo","Contrato","Parcela","Assessoria","Data","Valor","Pct",
+                     "Liquidacao","Recebido","Dias","Vencimento","CPF"]
+        _pag_dfs = []
+        for p in recup_paths:
+            _d = pd.read_csv(p, encoding="latin-1", sep=None, engine="python")
+            if _d.shape[1] >= len(PROP_COLS):
+                _d = _d.iloc[:, :len(PROP_COLS)]
+                _d.columns = PROP_COLS
+                _pag_dfs.append(_d)
+            else:
+                print(f"    ⚠ {p.name} não tem o formato esperado ({len(PROP_COLS)} colunas) — ignorado")
+
+        if not _pag_dfs:
+            raise ValueError("nenhum arquivo de Recuperação com formato reconhecido")
+
+        pag = pd.concat(_pag_dfs, ignore_index=True)
+        pag["_cpf_norm"] = pag["CPF"].apply(norm_cpf)
+        pag["_receb_n"]  = pag["Recebido"].apply(safe_float)
+        pag["_liq_dt"]   = pd.to_datetime(pag["Liquidacao"], format="%d/%m/%Y", errors="coerce")
+        pag["_is_ac_pag"] = (pag["Tipo"] == "Acordo").astype(int)
+        pag = pag[(pag["_cpf_norm"] != "") & pag["_liq_dt"].notna() & (pag["_receb_n"] > 0)]
+
+        HOJE_DT = datetime.now(BRT).replace(hour=0, minute=0, second=0, microsecond=0, tzinfo=None)
+        PROP_HORIZON = 30
+        PROP_FEATS = ["recencia_dias","tenure_dias","freq_pagtos","valor_medio","valor_total",
+                      "valor_std","dias_atraso_medio","pct_acordo","n_assessorias","n_contratos",
+                      "n_pagtos_90d","n_pagtos_180d"]
+
+        def _prop_build_feats(ref_date):
+            h = pag[pag["_liq_dt"] < ref_date]
+            if h.empty:
+                return pd.DataFrame(columns=["_cpf_norm"] + PROP_FEATS)
+            g = h.groupby("_cpf_norm")
+            last_pag, first_pag = g["_liq_dt"].max(), g["_liq_dt"].min()
+            f = pd.DataFrame({
+                "recencia_dias":     (ref_date - last_pag).dt.days,
+                "tenure_dias":       (ref_date - first_pag).dt.days,
+                "freq_pagtos":       g.size(),
+                "valor_medio":       g["_receb_n"].mean(),
+                "valor_total":       g["_receb_n"].sum(),
+                "valor_std":         g["_receb_n"].std().fillna(0),
+                "dias_atraso_medio": g["Dias"].mean(),
+                "pct_acordo":        g["_is_ac_pag"].mean(),
+                "n_assessorias":     g["Assessoria"].nunique(),
+                "n_contratos":       g["Contrato"].nunique(),
+            })
+            for win, name in [(90, "n_pagtos_90d"), (180, "n_pagtos_180d")]:
+                hw = h[h["_liq_dt"] >= ref_date - timedelta(days=win)]
+                f[name] = hw.groupby("_cpf_norm").size()
+                f[name] = f[name].fillna(0)
+            return f.reset_index()
+
+        def _prop_label(start, end):
+            lw = pag[(pag["_liq_dt"] >= start) & (pag["_liq_dt"] < end)]
+            return set(lw["_cpf_norm"])
+
+        T = HOJE_DT - timedelta(days=PROP_HORIZON)
+        feat_train = _prop_build_feats(T)
+        feat_train["y"] = feat_train["_cpf_norm"].isin(_prop_label(T, HOJE_DT)).astype(int)
+        _n_pos = int(feat_train["y"].sum())
+
+        if len(feat_train) >= 200 and _n_pos >= 30 and (len(feat_train) - _n_pos) >= 30:
+            # Validação fora do tempo: treina num corte mais antigo, testa num corte
+            # independente mais recente que o modelo nunca viu.
+            T_tr_oot = HOJE_DT - timedelta(days=150)
+            T_te_oot = HOJE_DT - timedelta(days=60)
+            f_tr_oot = _prop_build_feats(T_tr_oot)
+            f_tr_oot["y"] = f_tr_oot["_cpf_norm"].isin(_prop_label(T_tr_oot, T_tr_oot + timedelta(days=PROP_HORIZON))).astype(int)
+            f_te_oot = _prop_build_feats(T_te_oot)
+            f_te_oot["y"] = f_te_oot["_cpf_norm"].isin(_prop_label(T_te_oot, T_te_oot + timedelta(days=PROP_HORIZON))).astype(int)
+
+            _auc_oot = None
+            if len(f_tr_oot) >= 200 and len(f_te_oot) >= 200:
+                _m_oot = HistGradientBoostingClassifier(max_depth=4, max_iter=150, learning_rate=0.08, random_state=42)
+                _m_oot.fit(f_tr_oot[PROP_FEATS], f_tr_oot["y"])
+                _p_oot = _m_oot.predict_proba(f_te_oot[PROP_FEATS])[:, 1]
+                _auc_oot = round(float(roc_auc_score(f_te_oot["y"], _p_oot)), 3)
+
+            _model = HistGradientBoostingClassifier(max_depth=4, max_iter=150, learning_rate=0.08, random_state=42)
+            _model.fit(feat_train[PROP_FEATS], feat_train["y"])
+
+            feat_live = _prop_build_feats(HOJE_DT)
+            if len(feat_live):
+                _scores = pd.Series(_model.predict_proba(feat_live[PROP_FEATS])[:, 1] * 100, index=feat_live["_cpf_norm"])
+            else:
+                _scores = pd.Series(dtype=float)
+            _mapped = cart["_cpf_norm"].map(_scores)   # NaN pra quem não tem histórico
+            _tem_hist = _mapped.notna()
+            cart.loc[_tem_hist, "_propscore"] = _mapped[_tem_hist].astype(float)
+            if _tem_hist.any():
+                cart.loc[_tem_hist, "_propband"] = (
+                    3 - pd.qcut(cart.loc[_tem_hist, "_propscore"], 4, labels=False, duplicates="drop")
+                ).astype(int)
+
+            prop_meta = {
+                "auc_oot": _auc_oot,
+                "horizon_dias": PROP_HORIZON,
+                "cutoff_treino": T.strftime("%Y-%m-%d"),
+                "oot_cutoff_treino": T_tr_oot.strftime("%Y-%m-%d"),
+                "oot_cutoff_teste": T_te_oot.strftime("%Y-%m-%d"),
+                "n_treino": int(len(feat_train)),
+                "n_pos_treino": _n_pos,
+                "n_pagamentos_historico": int(len(pag)),
+                "n_cpfs_historico": int(pag["_cpf_norm"].nunique()),
+                "n_escoravel": int(_tem_hist.sum()),
+                "pct_escoravel": round(float(_tem_hist.mean()) * 100, 1) if len(cart) else 0,
+                "band_labels": ["A — Propensão Alta", "B — Propensão Média-Alta",
+                                "C — Propensão Média-Baixa", "D — Propensão Baixa"],
+            }
+            print(f"    → AUC out-of-time: {_auc_oot} | treino: {len(feat_train):,} CPFs "
+                  f"({_n_pos:,} pagaram nos 30d seguintes ao corte) | escoráveis na carteira: "
+                  f"{int(_tem_hist.sum()):,} ({prop_meta['pct_escoravel']}%)")
+        else:
+            print(f"    ⚠ Histórico de pagamento insuficiente (treino={len(feat_train)}, "
+                  f"positivos={_n_pos}) — Propensão de Pagamento não calculada")
+    except ImportError:
+        print("    ⚠ scikit-learn não instalado — Propensão de Pagamento não calculada")
+    except Exception as e:
+        print(f"    ⚠ Falha ao calcular Propensão de Pagamento ({e}) — marcação fica zerada")
+else:
+    print("  (nenhum arquivo 'Recuperação AAAA.csv' encontrado na pasta — nome precisa conter "
+          "\"recupera\"; Propensão de Pagamento não calculada, não bloqueia a geração dos outros JSONs)")
+
 # Bloco global
 bloco_global = calc_block(cart, acion_valid)
 
@@ -913,6 +1074,8 @@ if by_assessoria:
     mes_json["by_assessoria"] = by_assessoria
 if coll_meta:
     mes_json["collection_score_meta"] = coll_meta
+if prop_meta:
+    mes_json["propensao_meta"] = prop_meta
 
 
 # ================================================================
@@ -923,7 +1086,8 @@ if coll_meta:
 #   QtdTel, QtdAcionAssessoriaAtual,
 #   sexo_idx, faixa_etaria_idx, categoria_prof_idx, faixa_renda_idx, score_idx,
 #   collection_score, collection_band,
-#   is_funcionario, filial_idx, cargo_idx]
+#   is_funcionario, filial_idx, cargo_idx,
+#   propensao_score, propensao_band]
 # ================================================================
 print("  Montando analítico...")
 rows = []
@@ -956,6 +1120,8 @@ for _, r in cart.iterrows():
         int(r["_is_funcionario"]),          # 24 is_funcionario (novo em 21/08/2026)
         int(r["_filial_idx"]),              # 25 filial_idx (-1 se não é funcionário)
         int(r["_cargo_idx"]),               # 26 cargo_idx (-1 se não é funcionário)
+        round(float(r["_propscore"]), 1),   # 27 propensao_score (probabilidade %, 0-100, novo em 21/08/2026)
+        int(r["_propband"]),                # 28 propensao_band (0=A alta ... 3=D baixa, -1=sem histórico)
     ])
 
 print(f"  → {len(rows):,} registros no analítico")
