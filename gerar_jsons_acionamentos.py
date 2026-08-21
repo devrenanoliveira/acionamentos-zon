@@ -633,7 +633,8 @@ cobertura = round(acionados / total * 100, 1) if total else 0
 print(f"  Total: {total:,} | Acionados: {acionados:,} | Não: {total-acionados:,} | Cobertura: {cobertura}%")
 
 # ================================================================
-#  Propensão a Acordo ("Collection Score") — novo em 20/08/2026
+#  Collection Score (ex-"Propensão a Acordo") — novo em 20/08/2026,
+#  renomeado e recalibrado em 21/08/2026
 #  ------------------------------------------------------------
 #  O QUE É: modelo estatístico (regressão logística) treinado na própria
 #  carteira do mês, prevendo a probabilidade de um cliente pertencer ao
@@ -642,25 +643,37 @@ print(f"  Total: {total:,} | Acionados: {acionados:,} | Não: {total-acionados:,
 #  histórico de pagamento real, só o snapshot atual da carteira.
 #
 #  NÃO é o Score Fatura, e pode até divergir dele: nos testes, clientes de
-#  Score Fatura MAIS BAIXO tiveram mais chance de estar em acordo (méd.
-#  248 vs 332) — provavelmente porque são o público mais empurrado pelas
-#  assessorias pra renegociação formal, não porque "score baixo = melhor
-#  pagador". Por isso o nome no dashboard é "Propensão a Acordo", não
-#  "Collection Score" genérico — evita confusão com o Score Fatura oficial.
+#  Score Fatura MAIS BAIXO tiveram mais chance de estar em acordo —
+#  provavelmente porque são o público mais empurrado pelas assessorias pra
+#  renegociação formal, não porque "score baixo = melhor pagador".
 #
 #  FEATURES (deliberadamente SEM Dias/Situação/fa_idx — a definição de
 #  _is_acordo já usa esses campos; incluí-los tornaria o modelo tautológico,
-#  não preditivo): idade, score fatura, renda, saldo (log), qtd. de
-#  acionamentos GLOBAL (log) — incluída após comparação: derruba o AUC de
-#  0,63 pra 0,87, capturando "esse caso resolve rápido, com pouco esforço
-#  de cobrança" — mais categoria profissão, sexo, agrupador, UF.
+#  não preditivo): idade, score fatura, renda, saldo (log), categoria
+#  profissão, sexo, agrupador, UF.
+#
+#  ⚠️ QTD. DE ACIONAMENTOS FOI REMOVIDA DAS FEATURES EM 21/08/2026.
+#  Na primeira versão (20/08) essa variável (log_qtd) tinha o maior peso do
+#  modelo — incluí-la levava o AUC de 0,63 pra 0,87, mas o efeito colateral
+#  acabou sendo dominante demais na prática: 5,6% da carteira tem zero
+#  acionamentos, e 99,4% desses clientes caíam automaticamente na banda A
+#  (propensão média 96 num range de 0-100, contra 47 de quem já foi
+#  contatado ao menos uma vez) — o ranking virava essencialmente "quem
+#  ainda não foi tocado este mês", não um perfil de potencial de pagamento.
+#  Isso já é informação óbvia e visível na própria coluna Qtd. Acionamentos
+#  da tabela — não precisa de modelo pra saber que vale ligar pra quem
+#  nunca foi ligado. O valor do Collection Score está em achar o PERFIL de
+#  maior potencial de pagamento dentro da carteira, independente de quem
+#  já foi ou não contatado — por isso a variável saiu do modelo (decisão do
+#  usuário, 21/08/2026). Qtd. de acionamentos continua visível e filtrável
+#  na tabela, só não influencia mais o score.
 #
 #  SCORE FINAL: percentil (0-100) da probabilidade prevista dentro da
 #  própria carteira do mês — não a probabilidade bruta (fica baixa demais
 #  pra ler, já que só ~4% da carteira está em acordo). Banda A (top 25%,
 #  maior propensão) a D (25% inferior, menor propensão).
 # ================================================================
-print("  Calculando Propensão a Acordo (Collection Score)...")
+print("  Calculando Collection Score...")
 coll_meta = None
 try:
     import numpy as np
@@ -681,7 +694,6 @@ try:
         "score":    cart["_score"],
         "renda":    cart["_renda"],
         "log_saldo": np.log1p(cart["_saldo"].clip(lower=0)),
-        "log_qtd":   np.log1p(cart["_qtd"]),
         "catprof":  cart["_catprof"].where(cart["_catprof"].isin(_catprof_top), "Outros"),
         "sexo":     cart["_sexo"].where(cart["_sexo"].isin(["Feminino", "Masculino"]), "Não informado"),
         "agrup":    cart["_ag"].where(cart["_ag"].isin(_agrup_top), "Outros"),
@@ -689,7 +701,7 @@ try:
     })
     coll_y = cart["_is_acordo"]
 
-    _num_cols = ["idade", "score", "renda", "log_saldo", "log_qtd"]
+    _num_cols = ["idade", "score", "renda", "log_saldo"]
     _cat_cols = ["catprof", "sexo", "agrup", "uf"]
 
     _pre_num = Pipeline([("imp", SimpleImputer(strategy="median")), ("sc", StandardScaler())])
@@ -718,8 +730,8 @@ try:
         _top_feats = sorted(zip(_feat_names, _coefs), key=lambda x: -abs(x[1]))[:8]
 
         _band_labels = [
-            "A — Alta propensão", "B — Média-alta propensão",
-            "C — Média-baixa propensão", "D — Baixa propensão",
+            "A — Collection Score Alto", "B — Collection Score Médio-Alto",
+            "C — Collection Score Médio-Baixo", "D — Collection Score Baixo",
         ]
         # Composição das bandas só sobre quem ainda faz sentido priorizar: fora de
         # acordo (já resolvido) e fora de "Sem atraso" (saldo=0, nada a cobrar) —

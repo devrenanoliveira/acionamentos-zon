@@ -56,6 +56,29 @@ body{font-family:system-ui,-apple-system,sans-serif;background:var(--bg);color:v
 .tab-btn{padding:11px 18px;font-size:12.5px;border:none;background:transparent;cursor:pointer;white-space:nowrap;color:rgba(255,255,255,.6);border-bottom:2px solid transparent;font-weight:500;transition:color .15s,border-color .15s;flex-shrink:0}
 .tab-btn:hover{color:rgba(255,255,255,.9)}
 .tab-btn.active{color:#fff;border-bottom-color:var(--gold-light);font-weight:700}
+.tab-btn.featured{color:#FDE68A;position:relative}
+.tab-btn.featured:hover{color:#FEF3C7}
+.tab-btn.featured.active{color:#fff}
+.tab-btn.featured::after{content:'';position:absolute;left:10px;right:10px;bottom:5px;height:2px;background:linear-gradient(90deg,var(--gold),var(--gold-light));border-radius:2px;opacity:.55}
+.tab-btn.featured.active::after{opacity:0}
+.cs-hero{background:linear-gradient(135deg,var(--navy) 0%,var(--navy-mid) 55%,var(--gold) 165%);border-radius:12px;padding:16px 20px;margin-bottom:16px;color:#fff;display:flex;align-items:center;gap:14px;box-shadow:0 4px 14px rgba(15,36,97,.18)}
+.cs-hero-icon{font-size:26px;flex-shrink:0;background:rgba(255,255,255,.14);border-radius:50%;width:46px;height:46px;display:flex;align-items:center;justify-content:center}
+.cs-hero-title{font-size:16px;font-weight:800;letter-spacing:.01em;display:flex;align-items:center;gap:8px}
+.cs-hero-badge{font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;background:var(--gold-light);color:#1a1203;padding:2px 7px;border-radius:4px}
+.cs-hero-sub{font-size:11.5px;color:rgba(255,255,255,.78);margin-top:3px;line-height:1.5}
+.cs-band-summary{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:16px}
+.cs-band-card{border:1.5px solid #E2E8F0;border-radius:10px;padding:12px 14px;background:#fff;transition:border-color .15s}
+body.dark .cs-band-card{background:#1e293b;border-color:#334155}
+.cs-band-card.band-A{border-top:4px solid #059669}
+.cs-band-card.band-B{border-top:4px solid #F59E0B}
+.cs-band-card.band-C{border-top:4px solid #EA580C}
+.cs-band-card.band-D{border-top:4px solid #DC2626}
+.cs-band-card .cs-band-label{font-size:10.5px;font-weight:700;color:#64748B;text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px}
+.cs-band-card .cs-band-count{font-size:22px;font-weight:800;color:var(--navy);font-variant-numeric:tabular-nums}
+body.dark .cs-band-card .cs-band-count{color:#fff}
+.cs-band-card .cs-band-pct{font-size:11.5px;color:#64748B;margin-top:2px}
+.cs-band-card .cs-band-saldo{font-size:11px;color:#64748B;margin-top:6px;border-top:1px dashed #E2E8F0;padding-top:6px}
+body.dark .cs-band-card .cs-band-saldo{border-top-color:#334155}
 /* ── LOADING ───────────────────────────────────────────────── */
 .loading-overlay{position:fixed;inset:0;background:var(--load-bg);display:flex;align-items:center;justify-content:center;z-index:9999;flex-direction:column;gap:12px;backdrop-filter:blur(2px)}
 .loading-overlay.hidden{display:none}
@@ -319,7 +342,7 @@ body.dark .filter-notice{background:rgba(59,130,246,.08)}
   <button class="tab-btn" data-tab="matriz">Matriz</button>
   <button class="tab-btn" data-tab="volume">Volume</button>
   <button class="tab-btn" data-tab="analitico">Analítico</button>
-  <button class="tab-btn" data-tab="propensao">Propensão a Acordo</button>
+  <button class="tab-btn featured" data-tab="propensao">🎯 Collection Score</button>
   <span style="width:1px;background:rgba(255,255,255,.15);margin:6px 4px;align-self:stretch;flex-shrink:0;"></span>
   <a href="https://devrenanoliveira.github.io/cobranca-pj-convenios-e-cartoes/" target="_blank" rel="noopener"
      title="Carteira PJ — Convênios e Cartões"
@@ -610,12 +633,12 @@ body.dark .filter-notice{background:rgba(59,130,246,.08)}
   </div>
 </div>
 
-<!-- ══ PROPENSÃO A ACORDO ══ -->
+<!-- ══ COLLECTION SCORE ══ -->
 <div id="panel-propensao" class="panel">
   <div id="cs-content">
     <div class="an-loading">
       <div class="spinner"></div>
-      Clique na aba para carregar os dados de propensão…
+      Clique na aba para carregar o Collection Score…
     </div>
   </div>
 </div>
@@ -634,7 +657,9 @@ let currentTipo = '';   // '' | 'digital' | 'tel'
 let currentMotivo = ''; // '' | código do motivo
 let anFiltered = [], anPage = 1, anSortCol = -1, anSortDir = 1;
 let anInited = false, anLoading = false;
-// Propensão a Acordo (novo em 20/08/2026) — compartilha o mesmo ANALITICO/anInited
+// Collection Score (ex-"Propensão a Acordo", novo em 20/08/2026, renomeado em 21/08/2026)
+// — compartilha o mesmo ANALITICO/anInited da aba Analítico. Ids/funções internos
+// mantêm o prefixo "cs"/"propensao" por conveniência (Collection Score / legado).
 // carregado pela aba Analítico (mesmo array, colunas 22/23), com estado próprio de
 // filtro/ordenação/paginação
 let csFiltered = [], csPage = 1, csSortCol = 22, csSortDir = -1; // ordena por score desc por padrão
@@ -1213,7 +1238,7 @@ async function loadMes(mesId){
   anInited = false; anLoading = false; ANALITICO = null;
   document.getElementById('an-content').innerHTML = `<div class="an-loading"><div class="spinner"></div>Clique na aba para carregar os dados analíticos…</div>`;
   const csResetEl = document.getElementById('cs-content');
-  if(csResetEl) csResetEl.innerHTML = `<div class="an-loading"><div class="spinner"></div>Clique na aba para carregar os dados de propensão…</div>`;
+  if(csResetEl) csResetEl.innerHTML = `<div class="an-loading"><div class="spinner"></div>Clique na aba para carregar o Collection Score…</div>`;
   csFiltered = []; csPage = 1; csSortCol = 22; csSortDir = -1; csSoAcordo = false;
   const activeTab = document.querySelector('.tab-btn.active');
   if(activeTab && (activeTab.dataset.tab==='analitico' || activeTab.dataset.tab==='propensao')){
@@ -2065,7 +2090,7 @@ function renderPropensao(){
   const meta = D.collection_score_meta;
   const el = document.getElementById('cs-content');
   if(!meta){
-    el.innerHTML = `<div class="an-loading">⚠ Este mês não tem Propensão a Acordo calculada (JSON gerado antes de 20/08/2026, ou carteira sem casos suficientes de acordo para treinar o modelo).</div>`;
+    el.innerHTML = `<div class="an-loading">⚠ Este mês não tem Collection Score calculado (JSON gerado antes de 20/08/2026, ou carteira sem casos suficientes de acordo para treinar o modelo).</div>`;
     return;
   }
   const FA_LABELS = D.fa_labels||[];
@@ -2076,13 +2101,16 @@ function renderPropensao(){
     : '';
 
   const html = `
-    <div class="insight warn" style="margin-bottom:14px">
-      <strong>O que é isto:</strong> um modelo estatístico (regressão logística) treinado nos próprios dados
-      da carteira deste mês, estimando qual perfil de cliente tende a fechar e manter um acordo formal de
-      pagamento com pouco esforço de cobrança. <strong>Não é o Score Fatura</strong> — nos testes, os dois
-      chegaram a apontar em direções opostas (clientes de Score Fatura mais baixo tiveram mais chance de
-      já estar em acordo, provavelmente por serem o público mais empurrado pelas assessorias pra
-      renegociação). Use como apoio de priorização, não como avaliação de risco de crédito.
+    <div class="cs-hero">
+      <div class="cs-hero-icon">🎯</div>
+      <div>
+        <div class="cs-hero-title">Collection Score <span class="cs-hero-badge">Modelo estatístico</span></div>
+        <div class="cs-hero-sub">Prioriza a carteira pelo perfil com maior potencial de fechar/manter um acordo de pagamento —
+        não por quantidade de acionamentos recebidos (essa informação continua na coluna Qtd. Acion., mas não influencia mais o score).
+        <strong>Não é o Score Fatura</strong> — nos testes, os dois já apontaram em direções opostas (clientes de Score Fatura mais baixo
+        tiveram mais chance de já estar em acordo, provavelmente por serem o público mais empurrado pelas assessorias pra renegociação).
+        Use como apoio de priorização, não como avaliação de risco de crédito.</div>
+      </div>
     </div>
     <div class="kpi-grid" style="margin-bottom:14px">
       ${kpiHtml('AUC do modelo', meta.auc, meta.auc>=0.8?'green':meta.auc>=0.65?'amber':'red', '5-fold cross-validation · quanto mais perto de 1, melhor')}
@@ -2093,9 +2121,12 @@ function renderPropensao(){
     <details style="margin-bottom:14px">
       <summary style="cursor:pointer;font-size:12px;font-weight:600;color:#64748B">Ver variáveis com mais peso no modelo</summary>
       <div style="font-size:11.5px;color:#64748B;margin-top:8px;line-height:1.7">
-        ${meta.top_features.map(f=>`<div><code>${f.nome}</code> — peso ${f.peso>0?'+':''}${f.peso} ${f.peso<0?'(reduz a propensão)':'(aumenta a propensão)'}</div>`).join('')}
+        ${meta.top_features.map(f=>`<div><code>${f.nome}</code> — peso ${f.peso>0?'+':''}${f.peso} ${f.peso<0?'(reduz o score)':'(aumenta o score)'}</div>`).join('')}
+        <div style="margin-top:6px;color:#94A3B8">Qtd. de acionamentos não entra como variável do modelo (decisão de 21/08/2026) — evita que "ainda não foi contatado" domine o ranking sozinho.</div>
       </div>
     </details>
+    <div class="sec-label">Resumo por banda</div>
+    <div class="cs-band-summary" id="cs-band-summary"></div>
     <div class="cs-filters an-filters">
       <input type="text" id="cs-search" class="an-search" placeholder="Buscar por CPF ou Nome…" oninput="csFilter()">
       ${asOpts ? `<select id="cs-as" class="an-select" onchange="csFilter()">${asOpts}</select>` : ''}
@@ -2113,7 +2144,7 @@ function renderPropensao(){
       <table class="an-table">
         <thead><tr>
           <th>CPF/CNPJ</th><th>Nome</th>
-          <th class="s" id="th-cs-score" onclick="csSort(22)">Propensão</th>
+          <th class="s" id="th-cs-score" onclick="csSort(22)">Collection Score</th>
           <th>Banda</th>
           <th>Faixa Atraso</th>
           <th class="s" id="th-cs-saldo" onclick="csSort(5)">Saldo (R$)</th>
@@ -2135,21 +2166,19 @@ function renderPropensao(){
   csFilter();
 }
 
-function csFilter(){
-  if(!ANALITICO || !D) return;
-  const CATPROF_LIST = D.catprof_list||[];
-  const IDADE_LABELS = D.faixa_etaria_labels||[];
-  const SCORE_LABELS = D.score_labels||[];
+// Aplica todos os filtros da aba EXCETO o de banda — usado tanto pra montar a
+// lista final (csFilter, que aplica o de banda em cima) quanto pro resumo por
+// banda (que precisa ver a distribuição completa mesmo com uma banda selecionada).
+function csBaseFiltered(){
+  if(!ANALITICO || !D) return [];
   const q    = (document.getElementById('cs-search')?.value||'').toLowerCase();
   const fa   = document.getElementById('cs-fa')?.value;
-  const band = document.getElementById('cs-band')?.value;
   let asFilter = currentAs !== null ? String(currentAs) : (document.getElementById('cs-as')?.value||'');
 
-  csFiltered = ANALITICO.filter(r=>{
-    if(r[22]===undefined) return false; // JSON antigo sem os campos de propensão
+  return ANALITICO.filter(r=>{
+    if(r[22]===undefined) return false; // JSON antigo sem os campos de collection score
     if(q && !r[0].includes(q) && !r[1].toLowerCase().includes(q)) return false;
     if(fa!=='' && fa!==undefined && String(r[4])!==fa) return false;
-    if(band!=='' && band!==undefined && String(r[23])!==band) return false;
     if(asFilter!=='' && asFilter!==undefined && r[13]!==undefined && String(r[13])!==asFilter) return false;
     // Base: só faz sentido priorizar quem ainda não fechou acordo e ainda tem saldo em aberto
     const isAcordoRow = (r[14]===undefined?0:r[14])===1;
@@ -2163,8 +2192,40 @@ function csFilter(){
     if(currentMotivo && r[11] !== currentMotivo) return false;
     return true;
   });
+}
+
+function csFilter(){
+  if(!ANALITICO || !D) return;
+  const base = csBaseFiltered();
+  const band = document.getElementById('cs-band')?.value;
+  csFiltered = (band!=='' && band!==undefined) ? base.filter(r=>String(r[23])===band) : base;
   if(csSortCol>=0) csApplySort();
-  csPage=1; csRender();
+  csPage=1;
+  csRenderBandSummary(base);
+  csRender();
+}
+
+function csRenderBandSummary(base){
+  const el = document.getElementById('cs-band-summary');
+  if(!el) return;
+  const meta = D && D.collection_score_meta;
+  if(!meta){ el.innerHTML=''; return; }
+  const total = base.length;
+  const letters = ['A','B','C','D'];
+  const buckets = [0,0,0,0], saldos = [0,0,0,0];
+  base.forEach(r=>{ const b=r[23]; if(b>=0&&b<=3){ buckets[b]++; saldos[b]+=(r[5]||0); } });
+  const selectedBand = document.getElementById('cs-band')?.value;
+  el.innerHTML = letters.map((letra,i)=>{
+    const label = (meta.band_labels[i]||letra).replace(/^.\s*—\s*/, '');
+    const pct = total>0 ? (buckets[i]/total*100).toFixed(1) : '0.0';
+    const isActive = selectedBand === String(i);
+    return `<div class="cs-band-card band-${letra}" style="${isActive?'border-color:var(--gold-light)':''};cursor:pointer" onclick="document.getElementById('cs-band').value='${i}';csFilter()">
+      <div class="cs-band-label">Banda ${letra} — ${label}</div>
+      <div class="cs-band-count">${fmt(buckets[i])}</div>
+      <div class="cs-band-pct">${pct}% dos elegíveis filtrados</div>
+      <div class="cs-band-saldo">Saldo: ${fmtR$(saldos[i])}</div>
+    </div>`;
+  }).join('');
 }
 
 function csApplySort(){
@@ -2256,7 +2317,7 @@ function csExport(){
   const CATPROF_LIST=D.catprof_list||[], IDADE_LABELS=D.faixa_etaria_labels||[], SCORE_LABELS=D.score_labels||[];
   const STATUS_LABEL=D.status_label||{};
   const showAs = AS_LIST.length > 1;
-  const headers=['CPF/CNPJ','Nome','Propensão (0-100)','Banda','Dias Atraso','Faixa Atraso','Saldo (R$)','Categoria Profissão','Faixa Etária','Score Fatura','Qtd Acionamentos','Último Status'];
+  const headers=['CPF/CNPJ','Nome','Collection Score (0-100)','Banda','Dias Atraso','Faixa Atraso','Saldo (R$)','Categoria Profissão','Faixa Etária','Score Fatura','Qtd Acionamentos','Último Status'];
   if(showAs) headers.push('Assessoria');
   const rows=csFiltered.map(r=>{
     const row=[r[0],r[1],r[22],CS_BAND_SHORT[r[23]]||'',r[3],FA_LABELS[r[4]]||r[4],r[5],CATPROF_LIST[r[19]]||'',IDADE_LABELS[r[18]]||'',SCORE_LABELS[r[21]]||'',r[10],STATUS_LABEL[r[11]]||r[11]||''];
@@ -2265,9 +2326,9 @@ function csExport(){
   });
   const wb=XLSX.utils.book_new();
   const ws=XLSX.utils.aoa_to_sheet([headers,...rows]);
-  XLSX.utils.book_append_sheet(wb,ws,'Propensao');
+  XLSX.utils.book_append_sheet(wb,ws,'CollectionScore');
   const asName = currentAs!==null&&AS_LIST[currentAs]?`_${AS_LIST[currentAs].replace(/[^a-zA-Z0-9]/g,'_')}`:'';
-  XLSX.writeFile(wb,`propensao_acordo_${document.getElementById('mes-select').value}${asName}.xlsx`);
+  XLSX.writeFile(wb,`collection_score_${document.getElementById('mes-select').value}${asName}.xlsx`);
 }
 
 // ══ CARTEIRA ══
