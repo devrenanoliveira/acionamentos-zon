@@ -1,46 +1,64 @@
 # Carteira de Cobrança | Acionamentos por Assessoria
 
-Dashboard de acompanhamento de cobertura de acionamentos da carteira Z-ON Card, com histórico mensal navegável e filtro por assessoria (Fácil Resultado, PG+, Decisão), publicado via GitHub Pages.
+Dashboard de acompanhamento de cobertura de acionamentos da carteira Z-ON Card, com histórico mensal navegável, filtro por assessoria (Fácil Resultado, PG+, Decisão) e um modelo de priorização (Collection Score), publicado via GitHub Pages.
 
 **URL:** https://devrenanoliveira.github.io/acionamentos-zon/
+
+## Abas do dashboard
+
+| Aba | Conteúdo |
+|---|---|
+| **Carteira** (padrão) | Composição da carteira em 10 sub-abas: Faixas de Atraso, Faixas de Valor, Segmentos, Gênero, Faixa Etária, Categoria Profissão, Faixa de Renda, Score Fatura, Carteira Interna e 🏢 Colaboradores — todas com composição + cobertura de acionamento e toggle 🔢 Quantidade / 💰 Valor (R$) |
+| **Visão Geral** | KPIs gerais, cobertura (donut), frequência de acionamentos, motivos telefônicos |
+| **Por Atraso** / **Por Valor** | Cobertura e breakdown por faixa, com drill cruzado entre as duas |
+| **Matriz** | Cruzamento atraso × valor (não acionados / acionados / % cobertura), com cards de resumo e insight automático apontando o cruzamento prioritário |
+| **Volume** | Volume diário por canal (digital/telefônico), filtrável por Tipo de Ação e Canal/Motivo |
+| **Analítico** | Tabela individual por cliente, carregada sob demanda, com exportação Excel |
+| **🎯 Collection Score** | Aba de destaque com duas sub-abas — **📋 Lista Priorizada** (modelo estatístico de priorização) e **📊 Esperado x Realizado** (calibração vs. validação por coorte) — ver seção dedicada abaixo |
 
 ## Estrutura do projeto
 
 ```
 acionamentos-zon/
 ├── index.html                      # Dashboard (não edite os dados aqui)
-├── gerar_jsons_acionamentos.py     # Script Python que gera os 3 JSONs a partir dos CSVs
-├── atualizar_dashboard.py          # Script de referência (não é o método ativo)
+├── gerar_jsons_acionamentos.py     # Script Python de referência/prototipagem — ver "Como é atualizado" abaixo
+├── atualizar_dashboard.py          # Script antigo, não é o método ativo
 ├── requirements.txt
 ├── data/
-│   ├── index.json                  # Lista acumulativa de meses disponíveis
-│   ├── 2026-07.json                # Dados agregados — Julho 2026
-│   ├── 2026-07-analitico.json      # Dados individuais por cliente — Julho 2026
+│   ├── index.json                       # Lista acumulativa de meses disponíveis
+│   ├── collection_band_history.json     # Coortes do Collection Score (pendentes/resolvidas) — ver seção Collection Score
+│   ├── 2026-07.json                     # Dados agregados — Julho 2026
+│   ├── 2026-07-analitico.json           # Dados individuais por cliente — Julho 2026
 │   ├── 2026-08.json
 │   ├── 2026-08-analitico.json
-│   └── ...                         # Um par por mês, nunca sobrescrito
+│   └── ...                              # Um par por mês, nunca sobrescrito
 └── .github/workflows/
     └── atualizar.yml               # Existe no repo, mas NÃO é o método ativo (ver abaixo)
 ```
 
-> Não existem mais pastas `source/YYYY-MM/` com CSVs dentro do repositório. Os CSVs (30–95 MB cada) nunca sobem para o GitHub — só os 3 JSONs processados (~7–8 MB no total).
+> Não existem mais pastas `source/YYYY-MM/` com CSVs dentro do repositório. Os CSVs (30–95 MB cada) nunca sobem para o GitHub — só os JSONs processados (~7–8 MB no total).
 
 ---
 
 ## Como o dashboard é atualizado (processo manual, não automático)
 
-Diferente do que o workflow `.github/workflows/atualizar.yml` sugere, a atualização **não roda sozinha no dia 28**. O fluxo real é:
+Diferente do que o workflow `.github/workflows/atualizar.yml` sugere, a atualização **não roda sozinha no dia 28**. Desde meados de agosto/2026, a geração dos dados publicados passou por uma segunda camada de automação, o **Motor Único** (`motor_zon.py`) — um projeto separado, fora deste repositório, que também consolida os dados do dashboard irmão de KPIs. O `gerar_jsons_acionamentos.py` deste repositório continua sendo o script de referência: é aqui que qualquer funcionalidade nova (ex: Collection Score, Propensão de Pagamento, novas dimensões de carteira) é implementada e testada primeiro, antes de eventualmente ser replicada no Motor Único.
 
-1. Exportar do sistema Z-ON dois CSVs do período: `Carteira.csv` e `Acionamentos.csv` (os dois são sempre obrigatórios)
-2. Processar os CSVs com `gerar_jsons_acionamentos.py` (feito localmente/via Claude, não pelo GitHub Actions) — o script lê o `index.json` atual (para preservar o histórico de meses já publicados) e gera:
-   - `YYYY-MM.json` (~9–12 KB) — totais, faixas de atraso/valor, matriz, frequência, volume diário, motivos, breakdown por assessoria
-   - `YYYY-MM-analitico.json` (~7–8 MB) — um registro compacto por cliente
+Na prática, o fluxo de uma atualização é:
+
+1. Exportar do sistema Z-ON os CSVs do período: `Carteira.csv` e `Acionamentos.csv` são sempre obrigatórios; `Recuperação AAAA.csv` (histórico multi-ano de pagamentos) é opcional, necessário só para a Propensão de Pagamento calcular; uma planilha `.xlsx` com "colaborador" no nome é opcional, para a marcação de Colaboradores.
+2. Processar os CSVs (localmente/via Claude, não pelo GitHub Actions) — o script lê o `index.json` e o `collection_band_history.json` atuais (para preservar o histórico de meses e de coortes já publicados) e gera:
+   - `YYYY-MM.json` (~9–70 KB) — totais, faixas de atraso/valor, matriz, frequência, volume diário, motivos, breakdown por assessoria, metadados do Collection Score/Propensão/Esperado x Realizado
+   - `YYYY-MM-analitico.json` (~7–10 MB) — um registro compacto por cliente
    - `index.json` atualizado — acrescenta o mês novo à lista, mantendo os anteriores
-3. Subir os 3 arquivos manualmente em `data/` pela interface web do GitHub (**Add file → Upload files**) — GitHub Pages atualiza em ~1 minuto após o commit
+   - `collection_band_history.json` atualizado — acrescenta/resolve coortes do Collection Score (ver seção abaixo)
+3. Subir os arquivos manualmente em `data/` pela interface web do GitHub (**Add file → Upload files**) — GitHub Pages atualiza em ~1 minuto após o commit
 
 Este ciclo pode se repetir **mais de uma vez no mesmo mês** (ex: reexportar a carteira de agosto no meio do mês para refletir a carteira mais recente) — o `YYYY-MM.json` do mês é simplesmente sobrescrito a cada nova exportação; não há um "fechamento" único por mês.
 
 > ⚠️ **Nome do arquivo HTML:** sempre `index.html` (nunca `index_acionamentos.html`) — é o nome que o GitHub Pages espera servir na raiz do repositório.
+>
+> ⚠️ **Antes de rodar `gerar_jsons_acionamentos.py`**, sempre baixar o `index.json` **e** o `collection_band_history.json` atuais do GitHub para a pasta de trabalho — sem eles, o histórico de meses e as coortes de Collection Score pendentes de maturação são perdidos.
 
 ---
 
@@ -82,6 +100,38 @@ Quando há mais de uma assessoria na carteira (caso atual: Fácil, PG+, Decisão
 
 Isso significa que a soma dos blocos por assessoria não bate exatamente com o total global quando há clientes migrados de uma assessoria para outra no meio do período (o histórico de contato antigo continua marcado com quem fez o contato, não com o dono atual do cliente). É um comportamento esperado, não um bug — já foi tentado trocar essa lógica para filtro só por CPF e revertido, por inflar artificialmente a cobertura de assessorias que receberam clientes migrados.
 
+Um campo relacionado, `qtd_own` (analítico), existe porque o filtro "Sem acionamento" do Analítico usava a quantidade global de acionamentos do cliente mesmo com uma assessoria filtrada — divergindo da Matriz sempre que o cliente migrou de assessoria. `qtd_own` conta só o que a assessoria atual do cliente executou; é o que os filtros por-assessoria devem usar.
+
+---
+
+## Collection Score, Propensão de Pagamento e Esperado x Realizado
+
+A aba **🎯 Collection Score** reúne três funcionalidades baseadas em modelos estatísticos (não em contagem direta dos CSVs, como o resto do dashboard):
+
+### Collection Score (sub-aba 📋 Lista Priorizada)
+
+Lista de clientes priorizados por um modelo de regressão logística treinado a cada rodada sobre a própria carteira do mês, prevendo `is_acordo` (cliente com acordo formal ativo) como proxy. Gera um score em percentil (0–100) e uma banda A–D (A = maior propensão).
+
+- **Não é o Score Fatura oficial** e pode até divergir dele — nos dados observados, o Score Fatura médio de quem está em acordo é mais baixo que o de quem não está (perfis de maior risco são mais empurrados para renegociação formal). Um aviso fixo nesse sentido aparece na aba.
+- Features: idade, Score Fatura, renda, saldo (log), categoria profissão, sexo, agrupador (Carteira Interna), UF. **Deliberadamente sem** `Dias`/`Situação`/quantidade de acionamentos — os dois primeiros tornariam o modelo tautológico (são a própria definição do alvo); a quantidade de acionamentos foi testada, aumentava bastante o poder preditivo do modelo mas concentrava quase toda a carteira sem nenhum contato numa única banda, duplicando um filtro que já existe na tabela — removida deliberadamente.
+- Só treina com amostra mínima (≥30 casos positivos e negativos); abaixo disso, ou sem `scikit-learn` instalado, a aba fica com aviso "mês sem dado calculado".
+
+### Propensão de Pagamento (30 dias)
+
+Modelo separado (não substitui o Collection Score, roda em paralelo), baseado em **histórico real de pagamento** — não em status de carteira. Precisa de um ou mais arquivos `Recuperação AAAA.csv` (histórico multi-ano de pagamentos por CPF) na mesma pasta do script; sem eles, essa métrica simplesmente não aparece (ausência por falta de arquivo, não por período de espera). Gera um score e banda A–D próprios, exibidos lado a lado com o Collection Score, incluindo um card cruzando quem é banda A nos dois modelos ao mesmo tempo.
+
+### Esperado x Realizado (sub-aba 📊)
+
+Mede se as bandas do Collection Score realmente convertem: "Esperado" é calibração instantânea a cada rodada (% já em acordo hoje, % pagamento esperado por banda); "Realizado" acompanha coortes de clientes ao longo de 30 dias a partir da data em que a banda foi atribuída, medindo Conversão em acordo e Pagamento efetivo separadamente, usando o histórico real de pagamentos (mesma fonte da Propensão de Pagamento). Persistido em `data/collection_band_history.json`.
+
+⚠️ **`data/collection_band_history.json` precisa ser baixado do GitHub antes de cada rodada e resubido depois**, com a mesma lógica do `index.json` — sem isso, o rastreamento de coortes pendentes de maturação é perdido. O primeiro dado real de "Realizado" só existe depois que uma coorte completa os 30 dias corridos desde sua criação.
+
+---
+
+## Colaboradores (marcação opcional, cruzamento com RH)
+
+Quando uma planilha `.xlsx` com "colaborador" no nome está presente na pasta de trabalho, o dashboard marca quais clientes da carteira também são colaboradores do grupo (Filial/Cargo), disponível como filtro na aba Analítico e como sub-aba própria em Carteira. O cruzamento usa **só o CPF** — salário e data de nascimento da planilha de RH nunca são lidos nem expostos no dashboard (que é público, sem autenticação). Sem a planilha, a marcação fica desativada sem quebrar o resto da geração.
+
 ---
 
 ## Filtros e toggles do dashboard
@@ -110,8 +160,8 @@ Segue o padrão visual dos outros dashboards Z-ON: header navy (`#0F2461`), tab 
 `fetch()` é bloqueado pelo navegador em `file://` — nunca abra o `index.html` clicando duas vezes. Para testar antes de subir:
 
 ```bash
-python3 gerar_jsons_acionamentos.py   # gera os 3 JSONs na pasta atual, a partir dos CSVs locais
-mkdir -p data && cp 2026-*.json index.json data/
+python3 gerar_jsons_acionamentos.py   # gera os JSONs na pasta atual, a partir dos CSVs locais
+mkdir -p data && cp 2026-*.json index.json collection_band_history.json data/
 python3 -m http.server 8000
 # acesse http://localhost:8000
 ```
@@ -127,8 +177,11 @@ python3 -m http.server 8000
 | Script encerra com erro | Falta `Carteira.csv` ou `Acionamentos.csv` na pasta | Os dois são obrigatórios — confirmar que ambos estão na mesma pasta do script |
 | Filtro de assessoria não aparece | Só uma assessoria nos dados daquele mês | Normal — aparece automaticamente com 2+ assessorias |
 | Números de `by_assessoria` não batem com o total global | Clientes migraram de assessoria no meio do período | Comportamento esperado — ver seção "Atribuição por assessoria" acima |
+| `propensao_meta` ausente no JSON | `Recuperação AAAA.csv` (histórico multi-ano) não estava na pasta do script naquela rodada | Copiar os arquivos `Recuperação AAAA.csv` para a pasta antes de rodar — não é um período de espera, é ausência de arquivo |
+| Sub-aba "Esperado x Realizado" mostra tudo "aguardando maturação" | Nenhuma coorte de Collection Score ainda completou 30 dias desde que a banda foi atribuída | Esperado — o "Realizado" só populamente depois de ~30 dias corridos da primeira rodada em que a coorte apareceu |
+| Sub-aba "🏢 Colaboradores" não aparece | Nenhuma planilha `.xlsx` com "colaborador" no nome estava na pasta do script | Opcional — só aparece quando o mês tem dado de RH |
 | `SyntaxError: Failed to execute 'close'...` no preview do Claude | Sem os JSONs locais em `data/`, o fetch cai num 404 | Funciona normalmente publicado no GitHub Pages |
 
 ---
 
-*README atualizado em 14/08/2026 para refletir o fluxo real do projeto (processamento manual via Claude + upload de 3 JSONs, sem workflow automático ativo).*
+*README atualizado em 24/08/2026 para refletir a geração de dados via Motor Único e as funcionalidades de Collection Score/Propensão de Pagamento/Esperado x Realizado/Colaboradores (processamento manual, sem workflow automático ativo).*
