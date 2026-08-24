@@ -53,9 +53,9 @@ body{font-family:system-ui,-apple-system,sans-serif;background:var(--bg);color:v
 /* ── TAB NAV ───────────────────────────────────────────────── */
 .tab-nav{background:var(--navy-mid);display:flex;overflow-x:auto;flex-shrink:0;scrollbar-width:none}
 .tab-nav::-webkit-scrollbar{display:none}
-.tab-btn{padding:11px 18px;font-size:12.5px;border:none;background:transparent;cursor:pointer;white-space:nowrap;color:rgba(255,255,255,.6);border-bottom:2px solid transparent;font-weight:500;transition:color .15s,border-color .15s;flex-shrink:0}
-.tab-btn:hover{color:rgba(255,255,255,.9)}
-.tab-btn.active{color:#fff;border-bottom-color:var(--gold-light);font-weight:700}
+.tab-btn{padding:11px 18px;font-size:12.5px;border:none;background:transparent;cursor:pointer;white-space:nowrap;color:rgba(255,255,255,.6);border-bottom:3px solid transparent;border-radius:8px 8px 0 0;font-weight:500;transition:color .15s,border-color .15s,background-color .15s;flex-shrink:0}
+.tab-btn:hover{color:rgba(255,255,255,.9);background:rgba(255,255,255,.06)}
+.tab-btn.active{color:#fff;border-bottom-color:var(--gold-light);font-weight:700;background:rgba(255,255,255,.14)}
 .tab-btn.featured{color:#FDE68A;position:relative}
 .tab-btn.featured:hover{color:#FEF3C7}
 .tab-btn.featured.active{color:#fff}
