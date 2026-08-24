@@ -81,7 +81,26 @@ body.dark .cs-band-card .cs-band-count{color:#fff}
 body.dark .cs-band-card .cs-band-saldo{border-top-color:#334155}
 .cs-band-card.band-N{border-top:4px solid #94A3B8}
 .cs-prop-hero{background:linear-gradient(135deg,#0F2461 0%,#1a3680 60%,#3B82F6 165%);border-radius:12px;padding:16px 20px;margin:22px 0 16px;color:#fff;display:flex;align-items:center;gap:14px;box-shadow:0 4px 14px rgba(15,36,97,.18)}
-.cs-prop-notice{font-size:12.5px;color:#64748B;background:rgba(148,163,184,.1);border:1px solid rgba(148,163,184,.28);border-radius:8px;padding:10px 13px;margin:22px 0 16px;line-height:1.6}
+.cs-prop-notice,.er-notice{font-size:12.5px;color:#64748B;background:rgba(148,163,184,.1);border:1px solid rgba(148,163,184,.28);border-radius:8px;padding:10px 13px;margin:22px 0 16px;line-height:1.6}
+.er-rows{display:flex;flex-direction:column;gap:10px}
+.er-row{border:1.5px solid #E2E8F0;border-radius:10px;padding:12px 16px;background:#fff;display:grid;grid-template-columns:150px repeat(4,1fr);gap:16px;align-items:center}
+body.dark .er-row{background:#1e293b;border-color:#334155}
+.er-row-band{font-size:13px;font-weight:800;color:var(--navy);display:flex;flex-direction:column;gap:3px}
+body.dark .er-row-band{color:#fff}
+.er-row-band.band-A{color:#059669}
+.er-row-band.band-B{color:#B45309}
+.er-row-band.band-C{color:#C2410C}
+.er-row-band.band-D{color:#B91C1C}
+.er-row-n{font-size:10.5px;font-weight:500;color:#64748B}
+.er-row-metric-label{font-size:10.5px;color:#64748B;margin-bottom:5px;line-height:1.4}
+.er-nd{color:#94A3B8;font-weight:400}
+.er-bar-track{position:relative;height:20px;background:#F1F5F9;border-radius:5px;overflow:hidden}
+body.dark .er-bar-track{background:#0f172a}
+.er-bar-fill{height:100%;border-radius:5px;transition:width .2s}
+.er-bar-label{position:absolute;top:0;left:8px;height:20px;line-height:20px;font-size:11px;font-weight:700;color:var(--navy)}
+body.dark .er-bar-label{color:#fff}
+.er-bar-empty{font-size:10.5px;color:#94A3B8;line-height:20px;padding-left:8px}
+@media (max-width:900px){.er-row{grid-template-columns:1fr 1fr;grid-auto-rows:auto}}
 .cs-cross-card{display:flex;align-items:center;gap:16px;background:linear-gradient(135deg,rgba(245,158,11,.13),rgba(245,158,11,.04));border:1.5px solid rgba(245,158,11,.4);border-radius:12px;padding:14px 18px;margin-bottom:16px}
 .cs-cross-icon{font-size:24px;flex-shrink:0}
 .cs-cross-title{font-size:13px;font-weight:800;color:var(--navy);margin-bottom:2px}
@@ -2187,6 +2206,11 @@ function renderPropensao(){
     : '';
 
   const html = `
+    <div class="sub-tabs">
+      <button class="sub-btn active" onclick="showCsSub('lista',this)">📋 Lista Priorizada</button>
+      <button class="sub-btn" onclick="showCsSub('er',this)">📊 Esperado x Realizado</button>
+    </div>
+    <div id="csp-lista" class="sub-panel active">
     <div class="cs-hero">
       <div class="cs-hero-icon">🎯</div>
       <div>
@@ -2271,7 +2295,11 @@ function renderPropensao(){
         <tbody id="cs-tbody"></tbody>
       </table>
     </div>
-    <div class="an-pagination" id="cs-pagination"></div>`;
+    <div class="an-pagination" id="cs-pagination"></div>
+    </div>
+    <div id="csp-er" class="sub-panel">
+      ${renderEsperadoRealizadoHtml()}
+    </div>`;
 
   el.innerHTML = html;
   if(currentAs !== null){
@@ -2279,6 +2307,95 @@ function renderPropensao(){
     if(asEl) asEl.value = String(currentAs);
   }
   csFilter();
+}
+
+function showCsSub(id, btn){
+  document.querySelectorAll('#panel-propensao .sub-panel').forEach(p=>p.classList.remove('active'));
+  document.querySelectorAll('#panel-propensao .sub-tabs .sub-btn').forEach(b=>b.classList.remove('active'));
+  document.getElementById('csp-'+id).classList.add('active');
+  if(btn) btn.classList.add('active');
+}
+
+// ═══════════════════════════════════════════
+// ESPERADO x REALIZADO — Collection Score (novo em 24/08/2026)
+// ------------------------------------------------------------
+// "Esperado" é transversal (hoje): % já em acordo formal + propensão média
+// de pagamento (modelo de Propensão de Pagamento), por banda A-D do
+// Collection Score — calculado a cada rodada, sempre disponível.
+// "Realizado" é longitudinal: o script (gerar_jsons_acionamentos.py)
+// acompanha coortes de CPFs mês a mês (collection_band_history.json) e,
+// quando uma coorte completa 30 dias desde que foi classificada numa
+// banda, verifica no histórico de pagamento se ela de fato converteu em
+// acordo e/ou pagou algo dentro dessa janela. Só existe a partir de
+// meados de setembro/2026 (banda só existe desde 20/08/2026) — até lá
+// aparece como "aguardando maturação".
+// ═══════════════════════════════════════════
+function erPctBar(pct, cor){
+  if(pct===null||pct===undefined) return `<div class="er-bar-track"><div class="er-bar-empty">sem dado ainda</div></div>`;
+  const w = Math.max(2, Math.min(100, pct));
+  return `<div class="er-bar-track"><div class="er-bar-fill" style="width:${w}%;background:${cor}"></div><span class="er-bar-label">${pct.toFixed(1)}%</span></div>`;
+}
+function renderEsperadoRealizadoHtml(){
+  const er = D && D.esperado_realizado;
+  if(!er){
+    return `<div class="an-loading">⚠ Este mês não tem Esperado x Realizado calculado (JSON gerado antes de 24/08/2026).</div>`;
+  }
+  const letters = ['A','B','C','D'];
+  const cores = {A:'#10B981', B:'#3B82F6', C:'#F59E0B', D:'#EF4444'};
+  const esp = er.esperado||[], rea = er.realizado||[];
+  const totalPendentes = er.n_pendentes_imaturas||0;
+  const totalMaduras = rea.reduce((s,r)=>s+(r.n_coorte_madura||0),0);
+
+  const rows = letters.map((L,i)=>{
+    const e = esp.find(x=>x.banda===L) || {};
+    const r = rea.find(x=>x.banda===L) || {};
+    return `
+    <div class="er-row">
+      <div class="er-row-band band-${L}">Banda ${L}<span class="er-row-n">${fmt(e.n_clientes||0)} clientes hoje</span></div>
+      <div class="er-row-metric">
+        <div class="er-row-metric-label">Esperado — já em acordo hoje</div>
+        ${erPctBar(e.pct_ja_em_acordo_hoje, cores[L])}
+      </div>
+      <div class="er-row-metric">
+        <div class="er-row-metric-label">Esperado — propensão média de pagamento${e.n_escoravel_pagamento?'':' <span class=\"er-nd\">(sem histórico de pagamento no mês)</span>'}</div>
+        ${erPctBar(e.pct_pagamento_esperado, cores[L])}
+      </div>
+      <div class="er-row-metric">
+        <div class="er-row-metric-label">Realizado (${r.horizonte_dias||30}d) — conversão em acordo${r.n_coorte_madura?` · coorte: ${fmt(r.n_coorte_madura)}`:''}</div>
+        ${erPctBar(r.pct_conversao_acordo, cores[L])}
+      </div>
+      <div class="er-row-metric">
+        <div class="er-row-metric-label">Realizado (${r.horizonte_dias||30}d) — pagamento efetivo${r.n_coorte_madura?` · coorte: ${fmt(r.n_coorte_madura)}`:''}</div>
+        ${erPctBar(r.pct_pagamento_efetivo, cores[L])}
+      </div>
+    </div>`;
+  }).join('');
+
+  const avisoMaturacao = totalMaduras===0 ? `
+    <div class="er-notice">⏳ <strong>Realizado ainda sem dado</strong> — nenhuma coorte completou ${er.horizonte_dias} dias desde que foi
+    classificada numa banda. A banda do Collection Score só existe desde 20/08/2026, então a primeira leitura real de "Realizado" só fica
+    disponível a partir de meados de setembro/2026. ${fmt(totalPendentes)} clientes estão com a banda de hoje registrada e aguardando maturação —
+    isso é esperado, não é um erro.</div>` : '';
+
+  return `
+    <div class="cs-hero" style="background:linear-gradient(135deg,var(--navy) 0%,var(--navy-mid) 100%)">
+      <div class="cs-hero-icon">📊</div>
+      <div>
+        <div class="cs-hero-title">Esperado x Realizado <span class="cs-hero-badge">Calibração da banda</span></div>
+        <div class="cs-hero-sub"><strong>Esperado</strong> é uma foto de hoje: dentro de cada banda, quantos clientes já estão em acordo formal
+        e qual a propensão média de pagamento (modelo de Propensão de Pagamento). <strong>Realizado</strong> acompanha coortes de clientes ao
+        longo do tempo e mede, ${er.horizonte_dias} dias depois de terem sido classificados numa banda, quantos de fato converteram em acordo
+        e quantos efetivamente pagaram algo — são duas medidas separadas (conversão em acordo ≠ pagamento efetivo), a pedido do usuário.</div>
+      </div>
+    </div>
+    ${avisoMaturacao}
+    <div class="er-rows">${rows}</div>
+    <div style="font-size:11px;color:#94A3B8;margin-top:10px;line-height:1.6">
+      "Realizado" depende do arquivo de histórico de pagamento (Recuperação AAAA.csv) estar presente na rodada em que a coorte completa a janela —
+      se não estiver, a coorte fica pendente até uma rodada futura que já tenha o arquivo. Conversão em acordo conta pagamentos tipo "Acordo";
+      pagamento efetivo conta qualquer pagamento recebido, dos dois tipos, dentro da janela de ${er.horizonte_dias} dias a partir da data em que o
+      cliente foi classificado naquela banda.
+    </div>`;
 }
 
 // Aplica todos os filtros da aba EXCETO o de banda — usado tanto pra montar a

@@ -1000,6 +1000,142 @@ else:
     print("  (nenhum arquivo 'Recuperação AAAA.csv' encontrado na pasta — nome precisa conter "
           "\"recupera\"; Propensão de Pagamento não calculada, não bloqueia a geração dos outros JSONs)")
 
+# ================================================================
+#  Esperado x Realizado — Collection Score (novo em 24/08/2026)
+#  ------------------------------------------------------------
+#  Objetivo: dar um significado concreto a cada banda (A-D) do Collection
+#  Score, medindo DUAS coisas separadas (decisão do usuário, 24/08/2026):
+#    • Conversão em acordo  — o cliente formalizou um pagamento tipo
+#      "Acordo" dentro da janela
+#    • Pagamento efetivo    — o cliente pagou QUALQUER coisa (acordo ou
+#      não) dentro da janela
+#  "Esperado" é transversal (hoje): % já em is_acordo agora + propensão
+#  média de pagamento (modelo de Propensão de Pagamento), por banda.
+#  "Realizado" é longitudinal: acompanha coortes de clientes ao longo do
+#  tempo — toda rodada registra a banda de cada CPF na data de hoje
+#  (pendente), e quando uma coorte completa ER_HORIZON dias desde que foi
+#  registrada, verifica no HISTÓRICO DE PAGAMENTOS (mesmo `pag` da
+#  Propensão de Pagamento acima) se houve pagamento/acordo dentro dessa
+#  janela fixa de ER_HORIZON dias — não no status "hoje" da Carteira, que
+#  ia inflar a conversão se o script rodar tarde (mais de 30d depois).
+#  Isso significa que o "realizado" só existe pra coortes atribuídas há
+#  pelo menos ER_HORIZON dias — como a banda só existe desde 20/08/2026
+#  (recalibrada em 21/08/2026), a primeira leitura real só fica disponível
+#  ~30 dias depois da primeira vez que este bloco rodar. Até lá, fica
+#  "pendente" (ver `esperado_realizado.n_pendentes_imaturas` no JSON).
+#  Depende de `pag` (Recuperação AAAA.csv) estar presente NA RODADA em que
+#  a coorte completa a janela — se não estiver, a coorte fica pendente até
+#  uma rodada futura que já tenha o arquivo (mesma tolerância opcional já
+#  usada pela Propensão de Pagamento).
+#  Estado persistido em `collection_band_history.json` — mesmo padrão do
+#  `index.json` (baixar do GitHub antes de rodar, subir de volta depois).
+# ================================================================
+print("  Calculando Esperado x Realizado (Collection Score)...")
+ER_HORIZON = 30
+BAND_LABELS_SHORT = ["A", "B", "C", "D"]
+
+# --- Esperado (transversal, hoje) ---
+band_esperado = []
+for _b in range(4):
+    _sub = cart[cart["_collband"] == _b]
+    _n = len(_sub)
+    _pct_acordo_hoje = round(float(_sub["_is_acordo"].mean()) * 100, 2) if _n else 0.0
+    _sub_escoravel = _sub[_sub["_propband"] != -1]
+    _pct_pagto_esperado = round(float(_sub_escoravel["_propscore"].mean()), 1) if len(_sub_escoravel) else None
+    band_esperado.append({
+        "banda": BAND_LABELS_SHORT[_b],
+        "n_clientes": int(_n),
+        "pct_ja_em_acordo_hoje": _pct_acordo_hoje,
+        "pct_pagamento_esperado": _pct_pagto_esperado,
+        "n_escoravel_pagamento": int(len(_sub_escoravel)),
+    })
+
+# --- Realizado (coortes que já maturaram ER_HORIZON dias) ---
+er_path = SCRIPT_DIR / "collection_band_history.json"
+if er_path.exists():
+    with open(er_path, "r", encoding="utf-8") as f:
+        er_hist = json.load(f)
+else:
+    er_hist = {"pendentes": [], "resolvidos": []}
+print(f"    collection_band_history.json existente: {len(er_hist.get('pendentes', []))} pendente(s), "
+      f"{len(er_hist.get('resolvidos', []))} lote(s) já resolvido(s)")
+
+# Registra a coorte deste mês (substitui se este MES_ID já tinha sido registrado antes)
+er_hist["pendentes"] = [p for p in er_hist.get("pendentes", []) if p.get("mes_ref") != MES_ID]
+hoje_iso = HOJE_DT.strftime("%Y-%m-%d") if "HOJE_DT" in globals() else datetime.now(BRT).strftime("%Y-%m-%d")
+for _, _rr in cart[["_cpf_norm", "_collband"]].iterrows():
+    if not _rr["_cpf_norm"]:
+        continue
+    er_hist["pendentes"].append({
+        "cpf": _rr["_cpf_norm"],
+        "mes_ref": MES_ID,
+        "data_ref": hoje_iso,
+        "banda": int(_rr["_collband"]),
+    })
+
+_hoje_dt_check = datetime.strptime(hoje_iso, "%Y-%m-%d")
+_pag_disponivel = "pag" in globals() and isinstance(pag, pd.DataFrame) and len(pag) > 0
+_pendentes_restantes = []
+_resolvidos_novos = defaultdict(lambda: {"n_coorte": 0, "n_acordo": 0, "n_pagou": 0})
+_qtd_resolvidas_agora = 0
+for _p in er_hist["pendentes"]:
+    _data_ref_dt = datetime.strptime(_p["data_ref"], "%Y-%m-%d")
+    _dias_passados = (_hoje_dt_check - _data_ref_dt).days
+    if _dias_passados < ER_HORIZON or not _pag_disponivel:
+        _pendentes_restantes.append(_p)
+        continue
+    _janela = pag[(pag["_cpf_norm"] == _p["cpf"]) &
+                  (pag["_liq_dt"] >= _data_ref_dt) &
+                  (pag["_liq_dt"] < _data_ref_dt + timedelta(days=ER_HORIZON))]
+    _pagou = len(_janela) > 0
+    _fez_acordo = bool((_janela["_is_ac_pag"] == 1).any()) if len(_janela) else False
+    _key = (_p["mes_ref"], _p["banda"])
+    _resolvidos_novos[_key]["n_coorte"] += 1
+    if _pagou:
+        _resolvidos_novos[_key]["n_pagou"] += 1
+    if _fez_acordo:
+        _resolvidos_novos[_key]["n_acordo"] += 1
+    _qtd_resolvidas_agora += 1
+
+for (_mes_ref, _banda), _agg in _resolvidos_novos.items():
+    _existente = next((r for r in er_hist["resolvidos"]
+                        if r["mes_ref"] == _mes_ref and r["banda"] == _banda), None)
+    if _existente:
+        _existente["n_coorte"] += _agg["n_coorte"]
+        _existente["n_acordo"] += _agg["n_acordo"]
+        _existente["n_pagou"]  += _agg["n_pagou"]
+    else:
+        er_hist["resolvidos"].append({
+            "mes_ref": _mes_ref, "banda": _banda, "horizonte_dias": ER_HORIZON,
+            "n_coorte": _agg["n_coorte"], "n_acordo": _agg["n_acordo"], "n_pagou": _agg["n_pagou"],
+        })
+
+er_hist["pendentes"] = _pendentes_restantes
+if _qtd_resolvidas_agora:
+    print(f"    → {_qtd_resolvidas_agora:,} clientes de coortes maduras (≥{ER_HORIZON}d) resolvidos nesta rodada")
+elif not _pag_disponivel:
+    print(f"    ⚠ Sem Recuperação AAAA.csv nesta rodada — coortes maduras (se houver) ficam pendentes "
+          f"até uma rodada futura que tenha o arquivo")
+else:
+    print(f"    (nenhuma coorte atingiu {ER_HORIZON} dias ainda — banda só existe desde 20/08/2026, "
+          f"primeira leitura real prevista a partir de meados de setembro/2026)")
+
+band_realizado = []
+for _b in range(4):
+    _regs = [r for r in er_hist["resolvidos"] if r["banda"] == _b]
+    _n_coorte = sum(r["n_coorte"] for r in _regs)
+    _n_acordo = sum(r["n_acordo"] for r in _regs)
+    _n_pagou  = sum(r["n_pagou"] for r in _regs)
+    band_realizado.append({
+        "banda": BAND_LABELS_SHORT[_b],
+        "horizonte_dias": ER_HORIZON,
+        "n_coorte_madura": _n_coorte,
+        "pct_conversao_acordo": round(_n_acordo / _n_coorte * 100, 2) if _n_coorte else None,
+        "pct_pagamento_efetivo": round(_n_pagou / _n_coorte * 100, 2) if _n_coorte else None,
+    })
+
+n_pendentes_imaturas = len(er_hist["pendentes"])
+
 # Bloco global
 bloco_global = calc_block(cart, acion_valid)
 
@@ -1076,6 +1212,14 @@ if coll_meta:
     mes_json["collection_score_meta"] = coll_meta
 if prop_meta:
     mes_json["propensao_meta"] = prop_meta
+# Esperado x Realizado — novo em 24/08/2026, ver Seção 7 do doc do projeto
+mes_json["esperado_realizado"] = {
+    "horizonte_dias": ER_HORIZON,
+    "modelo_collection_score_valido": bool(coll_meta is not None),
+    "n_pendentes_imaturas": n_pendentes_imaturas,
+    "esperado": band_esperado,
+    "realizado": band_realizado,
+}
 
 
 # ================================================================
@@ -1170,14 +1314,24 @@ with open(idx_path, "w", encoding="utf-8") as f:
     json.dump(idx_data, f, ensure_ascii=False, indent=2)
 print(f"  ✓ index.json{' ':27} {idx_path.stat().st_size / 1024:>6.0f} KB  ({len(idx_data['meses'])} mês(es))")
 
+with open(er_path, "w", encoding="utf-8") as f:
+    json.dump(er_hist, f, ensure_ascii=False, indent=2)
+print(f"  ✓ collection_band_history.json{' ':9} {er_path.stat().st_size / 1024:>6.0f} KB  "
+      f"({len(er_hist['pendentes'])} pendente(s), {len(er_hist['resolvidos'])} lote(s) resolvido(s))")
+
 print(f"""
 {'='*62}
   ✅  Concluído!
 
-  Suba estes 3 arquivos na pasta data/ do GitHub:
+  Suba estes 4 arquivos na pasta data/ do GitHub:
     • {mes_path.name}
     • {analitico_path.name}
     • index.json
+    • collection_band_history.json   (novo em 24/08/2026 — Esperado x
+      Realizado do Collection Score; baixar a versão atual do GitHub e
+      colocar nesta pasta ANTES de rodar o script no próximo mês, senão
+      o histórico de coortes pendentes é perdido — mesmo cuidado já
+      existente com o index.json)
 
   GitHub Pages atualiza em ~1 minuto após o commit.
 {'='*62}
