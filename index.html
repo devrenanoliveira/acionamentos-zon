@@ -1022,8 +1022,22 @@ function onAssessoriaChange(){
   document.getElementById('btn-acion').classList.remove('active');
   document.getElementById('btn-pct').classList.remove('active');
   renderAll();
-  // Re-filtrar analítico se estiver carregado
-  if(anInited) anFilter();
+  // Sincroniza os selects locais de Assessoria (Analítico / Collection Score) com
+  // o filtro global. Sem isso, um select local que ficou setado numa assessoria
+  // específica "vence" silenciosamente o filtro global quando ele volta pra
+  // "Todas" — porque a lógica de anFilter()/csFilter() dá prioridade ao global
+  // só quando currentAs !== null, senão cai pro valor (possivelmente
+  // desatualizado) do select local. Bug reportado em 24/08/2026: header em
+  // "Todas" mas a aba Collection Score continuava mostrando só uma assessoria
+  // porque o select local (cs-as) nunca era resetado ao voltar pra "Todas".
+  const anAsEl = document.getElementById('an-as');
+  if(anAsEl) anAsEl.value = currentAs !== null ? String(currentAs) : '';
+  const csAsEl = document.getElementById('cs-as');
+  if(csAsEl) csAsEl.value = currentAs !== null ? String(currentAs) : '';
+  // Re-filtrar analítico e Collection Score se já estiverem carregados —
+  // independente da aba ativa no momento, pra não deixar uma aba já renderizada
+  // (mas não visível agora) desatualizada quando o usuário voltar pra ela.
+  if(anInited){ anFilter(); csFilter(); }
 }
 
 // ═══════════════════════════════════════════
