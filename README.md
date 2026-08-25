@@ -42,7 +42,7 @@ acionamentos-zon/
 
 ## Como o dashboard é atualizado (processo manual, não automático)
 
-Diferente do que o workflow `.github/workflows/atualizar.yml` sugere, a atualização **não roda sozinha no dia 28**. Desde meados de agosto/2026, a geração dos dados publicados passou por uma segunda camada de automação, o **Motor Único** (`motor_zon.py`) — um projeto separado, fora deste repositório, que também consolida os dados do dashboard irmão de KPIs. O `gerar_jsons_acionamentos.py` deste repositório continua sendo o script de referência: é aqui que qualquer funcionalidade nova (ex: Collection Score, Propensão de Pagamento, novas dimensões de carteira) é implementada e testada primeiro, antes de eventualmente ser replicada no Motor Único.
+Diferente do que o workflow `.github/workflows/atualizar.yml` sugere, a atualização **não roda sozinha no dia 28**. E, ao contrário do que uma versão anterior deste README chegou a afirmar, o **Motor Único** (`motor_zon.py` — projeto separado, fora deste repositório, que gera o `data.json` do dashboard irmão de KPIs) **não participa da geração deste dashboard**: leitura direta do script confirmou que não existe nenhuma linha de código de Acionamentos/Collection Score nele. Todo o dado publicado aqui — carteira, cobertura, Collection Score, Propensão de Pagamento, Esperado x Realizado, Colaboradores — vem 100% do `gerar_jsons_acionamentos.py` deste repositório, rodado localmente e commitado direto.
 
 Na prática, o fluxo de uma atualização é:
 
@@ -184,4 +184,4 @@ python3 -m http.server 8000
 
 ---
 
-*README atualizado em 24/08/2026 para refletir a geração de dados via Motor Único e as funcionalidades de Collection Score/Propensão de Pagamento/Esperado x Realizado/Colaboradores (processamento manual, sem workflow automático ativo).*
+*README atualizado em 25/08/2026 — corrige uma afirmação anterior de que o Motor Único participava da geração deste dashboard (não participa; confirmado por leitura direta do script) e mantém a descrição das funcionalidades de Collection Score/Propensão de Pagamento/Esperado x Realizado/Colaboradores (processamento manual, sem workflow automático ativo).*
