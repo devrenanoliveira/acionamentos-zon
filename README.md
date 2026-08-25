@@ -46,7 +46,7 @@ Diferente do que o workflow `.github/workflows/atualizar.yml` sugere, a atualiza
 
 Na prática, o fluxo de uma atualização é:
 
-1. Exportar do sistema Z-ON os CSVs do período: `Carteira.csv` e `Acionamentos.csv` são sempre obrigatórios; `Recuperação AAAA.csv` (histórico multi-ano de pagamentos) é opcional, necessário só para a Propensão de Pagamento calcular; uma planilha `.xlsx` com "colaborador" no nome é opcional, para a marcação de Colaboradores.
+1. Exportar do sistema Z-ON os CSVs do período: Carteira e Acionamentos são sempre obrigatórios; `Recuperação AAAA.csv` (histórico multi-ano de pagamentos) é opcional, necessário só para a Propensão de Pagamento calcular; uma planilha `.xlsx` com "colaborador" no nome é opcional, para a marcação de Colaboradores. Desde 25/08/2026 os dois CSVs obrigatórios **não precisam mais ser renomeados** — o sistema devolve ambos como `RELATORIO_<id>.csv` e o script identifica qual é qual pelo cabeçalho (colunas exclusivas de cada relatório), não pelo nome do arquivo.
 2. Processar os CSVs (localmente/via Claude, não pelo GitHub Actions) — o script lê o `index.json` e o `collection_band_history.json` atuais (para preservar o histórico de meses e de coortes já publicados) e gera:
    - `YYYY-MM.json` (~9–70 KB) — totais, faixas de atraso/valor, matriz, frequência, volume diário, motivos, breakdown por assessoria, metadados do Collection Score/Propensão/Esperado x Realizado
    - `YYYY-MM-analitico.json` (~7–10 MB) — um registro compacto por cliente

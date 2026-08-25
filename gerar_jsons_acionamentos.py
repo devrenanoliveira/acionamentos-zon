@@ -15,7 +15,7 @@ Uso:
   4. Suba os 3 arquivos gerados na pasta data/ do GitHub
 """
 
-import os, sys, json, re
+import os, sys, json, re, unicodedata
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from collections import defaultdict
@@ -197,8 +197,63 @@ def find_csv(hints: list):
                 return p
     return None
 
-cart_path  = find_csv(["carteira"])
-acion_path = find_csv(["acionamento", "relatorio"])
+
+def _norm(s):
+    s = str(s or "").strip().lower()
+    s = unicodedata.normalize("NFKD", s)
+    return "".join(c for c in s if not unicodedata.combining(c))
+
+
+# Colunas exclusivas de cada relatório — identifica o CSV pelo cabeçalho quando
+# o arquivo vem com o nome genérico de exportação do sistema (RELATORIO_<id>.csv),
+# sem precisar renomear manualmente. Confirmado 25/08/2026 contra os cabeçalhos
+# reais (score 4/4 no próprio tipo, 0 nos outros — ver motor_zon.py, mesma lógica).
+_ASSINATURAS_CSV = {
+    "carteira":     ["score fatura", "rating", "renda titular", "maior atraso"],
+    "acionamentos": ["motivo contato", "tipo motivo", "data inclusao", "responsavel"],
+}
+
+
+def _identificar_tipo_csv(path):
+    try:
+        for enc in ("utf-8-sig", "utf-8", "latin-1"):
+            try:
+                with open(path, encoding=enc) as f:
+                    primeira = f.readline()
+                break
+            except UnicodeDecodeError:
+                continue
+        else:
+            return None
+    except OSError:
+        return None
+    sep = ";" if primeira.count(";") > primeira.count(",") else ","
+    header_txt = " | ".join(_norm(c) for c in primeira.split(sep))
+    melhor_tipo, melhor_score = None, 0
+    for tipo, chaves in _ASSINATURAS_CSV.items():
+        score = sum(1 for k in chaves if k in header_txt)
+        if score > melhor_score:
+            melhor_tipo, melhor_score = tipo, score
+    return melhor_tipo if melhor_score >= 2 else None
+
+
+def find_csv_por_conteudo(tipo, hints_nome: list):
+    """Identifica o CSV pelo cabeçalho (não depende de rename manual); só cai
+    pro casamento por nome do arquivo se o conteúdo não resolver sem ambiguidade."""
+    candidatos = sorted(SCRIPT_DIR.glob("*.csv"))
+    achados = [p for p in candidatos if _identificar_tipo_csv(p) == tipo]
+    if len(achados) == 1:
+        return achados[0]
+    if len(achados) > 1:
+        print(f"AVISO: {len(achados)} arquivos com cabeçalho de '{tipo}' "
+              f"encontrados ({[p.name for p in achados]}) — usando o mais "
+              f"recente por data de modificação.")
+        return sorted(achados, key=lambda p: p.stat().st_mtime)[-1]
+    return find_csv(hints_nome)
+
+
+cart_path  = find_csv_por_conteudo("carteira", ["carteira"])
+acion_path = find_csv_por_conteudo("acionamentos", ["acionamento", "relatorio"])
 
 if not cart_path:
     print("ERRO: Carteira.csv não encontrado na pasta do script.")
