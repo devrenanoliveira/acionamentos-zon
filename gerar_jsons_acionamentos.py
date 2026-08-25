@@ -1191,6 +1191,121 @@ for _b in range(4):
 
 n_pendentes_imaturas = len(er_hist["pendentes"])
 
+# ================================================================
+#  Esperado x Realizado — Propensão de Pagamento (25/08/2026)
+#  ------------------------------------------------------------
+#  Mesma mecânica do bloco acima, mas bandeado por `_propband` (modelo de
+#  Propensão de Pagamento) em vez de `_collband` (Collection Score) — os
+#  dois modelos preveem coisas parecidas mas não idênticas (is_acordo vs.
+#  qualquer pagamento em 30d) e só o Collection Score tinha esse loop de
+#  calibração fechado. Adicionado a pedido do usuário (25/08/2026) pra
+#  também validar a Propensão contra o que de fato aconteceu, não só o
+#  AUC out-of-time (`prop_meta.auc_oot`, que é bancada — treino/teste —
+#  não é acompanhamento de coorte real).
+#  Clientes com `_propband == -1` (sem histórico de pagamento, não
+#  escoráveis) ficam de fora — não pertencem a nenhuma banda.
+#  "Esperado" por banda: % já em acordo hoje + propscore médio da própria
+#  banda (é o número que define a banda, mas serve de calibração — Banda A
+#  deveria ter propscore médio bem mais alto que a Banda D).
+#  "Realizado": mesma janela fixa de ER_HORIZON dias, mesmo histórico de
+#  pagamentos (`pag`), persistido separadamente em
+#  `propensao_band_history.json` (mesmo padrão de baixar/subir do GitHub
+#  já usado pelo `collection_band_history.json`).
+# ================================================================
+print("  Calculando Esperado x Realizado (Propensão de Pagamento)...")
+
+band_esperado_prop = []
+for _b in range(4):
+    _subp = cart[cart["_propband"] == _b]
+    _np = len(_subp)
+    band_esperado_prop.append({
+        "banda": BAND_LABELS_SHORT[_b],
+        "n_clientes": int(_np),
+        "pct_ja_em_acordo_hoje": round(float(_subp["_is_acordo"].mean()) * 100, 2) if _np else 0.0,
+        "pct_pagamento_esperado": round(float(_subp["_propscore"].mean()), 1) if _np else None,
+        "n_escoravel_pagamento": int(_np),
+    })
+
+erp_path = SCRIPT_DIR / "propensao_band_history.json"
+if erp_path.exists():
+    with open(erp_path, "r", encoding="utf-8") as f:
+        erp_hist = json.load(f)
+else:
+    erp_hist = {"pendentes": [], "resolvidos": []}
+print(f"    propensao_band_history.json existente: {len(erp_hist.get('pendentes', []))} pendente(s), "
+      f"{len(erp_hist.get('resolvidos', []))} lote(s) já resolvido(s)")
+
+erp_hist["pendentes"] = [p for p in erp_hist.get("pendentes", []) if p.get("mes_ref") != MES_ID]
+for _, _rrp in cart[["_cpf_norm", "_propband"]].iterrows():
+    if not _rrp["_cpf_norm"] or _rrp["_propband"] == -1:
+        continue
+    erp_hist["pendentes"].append({
+        "cpf": _rrp["_cpf_norm"],
+        "mes_ref": MES_ID,
+        "data_ref": hoje_iso,
+        "banda": int(_rrp["_propband"]),
+    })
+
+_pendentes_restantes_p = []
+_resolvidos_novos_p = defaultdict(lambda: {"n_coorte": 0, "n_acordo": 0, "n_pagou": 0})
+_qtd_resolvidas_agora_p = 0
+for _p in erp_hist["pendentes"]:
+    _data_ref_dt = datetime.strptime(_p["data_ref"], "%Y-%m-%d")
+    _dias_passados = (_hoje_dt_check - _data_ref_dt).days
+    if _dias_passados < ER_HORIZON or not _pag_disponivel:
+        _pendentes_restantes_p.append(_p)
+        continue
+    _janela = pag[(pag["_cpf_norm"] == _p["cpf"]) &
+                  (pag["_liq_dt"] >= _data_ref_dt) &
+                  (pag["_liq_dt"] < _data_ref_dt + timedelta(days=ER_HORIZON))]
+    _pagou = len(_janela) > 0
+    _fez_acordo = bool((_janela["_is_ac_pag"] == 1).any()) if len(_janela) else False
+    _key = (_p["mes_ref"], _p["banda"])
+    _resolvidos_novos_p[_key]["n_coorte"] += 1
+    if _pagou:
+        _resolvidos_novos_p[_key]["n_pagou"] += 1
+    if _fez_acordo:
+        _resolvidos_novos_p[_key]["n_acordo"] += 1
+    _qtd_resolvidas_agora_p += 1
+
+for (_mes_ref, _banda), _agg in _resolvidos_novos_p.items():
+    _existente = next((r for r in erp_hist["resolvidos"]
+                        if r["mes_ref"] == _mes_ref and r["banda"] == _banda), None)
+    if _existente:
+        _existente["n_coorte"] += _agg["n_coorte"]
+        _existente["n_acordo"] += _agg["n_acordo"]
+        _existente["n_pagou"]  += _agg["n_pagou"]
+    else:
+        erp_hist["resolvidos"].append({
+            "mes_ref": _mes_ref, "banda": _banda, "horizonte_dias": ER_HORIZON,
+            "n_coorte": _agg["n_coorte"], "n_acordo": _agg["n_acordo"], "n_pagou": _agg["n_pagou"],
+        })
+
+erp_hist["pendentes"] = _pendentes_restantes_p
+if _qtd_resolvidas_agora_p:
+    print(f"    → {_qtd_resolvidas_agora_p:,} clientes de coortes maduras (≥{ER_HORIZON}d) resolvidos nesta rodada")
+elif not _pag_disponivel:
+    print(f"    ⚠ Sem Recuperação AAAA.csv nesta rodada — coortes maduras (se houver) ficam pendentes "
+          f"até uma rodada futura que tenha o arquivo")
+else:
+    print(f"    (nenhuma coorte de propensão atingiu {ER_HORIZON} dias ainda)")
+
+band_realizado_prop = []
+for _b in range(4):
+    _regsp = [r for r in erp_hist["resolvidos"] if r["banda"] == _b]
+    _n_coorte_p = sum(r["n_coorte"] for r in _regsp)
+    _n_acordo_p = sum(r["n_acordo"] for r in _regsp)
+    _n_pagou_p  = sum(r["n_pagou"] for r in _regsp)
+    band_realizado_prop.append({
+        "banda": BAND_LABELS_SHORT[_b],
+        "horizonte_dias": ER_HORIZON,
+        "n_coorte_madura": _n_coorte_p,
+        "pct_conversao_acordo": round(_n_acordo_p / _n_coorte_p * 100, 2) if _n_coorte_p else None,
+        "pct_pagamento_efetivo": round(_n_pagou_p / _n_coorte_p * 100, 2) if _n_coorte_p else None,
+    })
+
+n_pendentes_imaturas_prop = len(erp_hist["pendentes"])
+
 # Bloco global
 bloco_global = calc_block(cart, acion_valid)
 
@@ -1274,6 +1389,15 @@ mes_json["esperado_realizado"] = {
     "n_pendentes_imaturas": n_pendentes_imaturas,
     "esperado": band_esperado,
     "realizado": band_realizado,
+}
+# Esperado x Realizado — Propensão de Pagamento, novo em 25/08/2026 (mesma
+# estrutura acima, bandeado por _propband — ver comentário na Seção 6)
+mes_json["esperado_realizado_propensao"] = {
+    "horizonte_dias": ER_HORIZON,
+    "modelo_propensao_valido": bool(prop_meta is not None),
+    "n_pendentes_imaturas": n_pendentes_imaturas_prop,
+    "esperado": band_esperado_prop,
+    "realizado": band_realizado_prop,
 }
 
 
@@ -1374,19 +1498,26 @@ with open(er_path, "w", encoding="utf-8") as f:
 print(f"  ✓ collection_band_history.json{' ':9} {er_path.stat().st_size / 1024:>6.0f} KB  "
       f"({len(er_hist['pendentes'])} pendente(s), {len(er_hist['resolvidos'])} lote(s) resolvido(s))")
 
+with open(erp_path, "w", encoding="utf-8") as f:
+    json.dump(erp_hist, f, ensure_ascii=False, indent=2)
+print(f"  ✓ propensao_band_history.json{' ':10} {erp_path.stat().st_size / 1024:>6.0f} KB  "
+      f"({len(erp_hist['pendentes'])} pendente(s), {len(erp_hist['resolvidos'])} lote(s) resolvido(s))")
+
 print(f"""
 {'='*62}
   ✅  Concluído!
 
-  Suba estes 4 arquivos na pasta data/ do GitHub:
+  Suba estes 5 arquivos na pasta data/ do GitHub:
     • {mes_path.name}
     • {analitico_path.name}
     • index.json
-    • collection_band_history.json   (novo em 24/08/2026 — Esperado x
-      Realizado do Collection Score; baixar a versão atual do GitHub e
-      colocar nesta pasta ANTES de rodar o script no próximo mês, senão
-      o histórico de coortes pendentes é perdido — mesmo cuidado já
-      existente com o index.json)
+    • collection_band_history.json   (Esperado x Realizado do Collection
+      Score; baixar a versão atual do GitHub e colocar nesta pasta ANTES
+      de rodar o script no próximo mês, senão o histórico de coortes
+      pendentes é perdido — mesmo cuidado já existente com o index.json)
+    • propensao_band_history.json    (novo em 25/08/2026 — Esperado x
+      Realizado da Propensão de Pagamento; mesmo cuidado do arquivo acima:
+      baixar do GitHub antes de rodar, subir de volta depois)
 
   GitHub Pages atualiza em ~1 minuto após o commit.
 {'='*62}

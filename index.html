@@ -2317,34 +2317,57 @@ function showCsSub(id, btn){
 }
 
 // ═══════════════════════════════════════════
-// ESPERADO x REALIZADO — Collection Score (novo em 24/08/2026)
+// ESPERADO x REALIZADO — Collection Score (novo em 24/08/2026) e
+// Propensão de Pagamento (novo em 25/08/2026, mesma mecânica)
 // ------------------------------------------------------------
-// "Esperado" é transversal (hoje): % já em acordo formal + propensão média
-// de pagamento (modelo de Propensão de Pagamento), por banda A-D do
-// Collection Score — calculado a cada rodada, sempre disponível.
+// "Esperado" é transversal (hoje): % já em acordo formal + uma segunda
+// leitura por banda — pro Collection Score, a propensão média de
+// pagamento (modelo de Propensão); pra Propensão, o propscore médio da
+// própria banda (calibração: Banda A deve ficar bem acima da Banda D).
 // "Realizado" é longitudinal: o script (gerar_jsons_acionamentos.py)
-// acompanha coortes de CPFs mês a mês (collection_band_history.json) e,
-// quando uma coorte completa 30 dias desde que foi classificada numa
-// banda, verifica no histórico de pagamento se ela de fato converteu em
-// acordo e/ou pagou algo dentro dessa janela. Só existe a partir de
-// meados de setembro/2026 (banda só existe desde 20/08/2026) — até lá
-// aparece como "aguardando maturação".
+// acompanha coortes de CPFs mês a mês (collection_band_history.json /
+// propensao_band_history.json) e, quando uma coorte completa 30 dias
+// desde que foi classificada numa banda, verifica no histórico de
+// pagamento se ela de fato converteu em acordo e/ou pagou algo dentro
+// dessa janela. Só existe a partir de meados de setembro/2026 (as bandas
+// só existem desde 20/08/2026) — até lá aparece como "aguardando
+// maturação". Os dois modelos têm o mesmo loop fechado (Esperado→
+// Realizado), alternável pelo toggle abaixo — antes só o Collection
+// Score tinha essa calibração viva, a Propensão só tinha AUC de bancada.
 // ═══════════════════════════════════════════
+let erModel = 'cs'; // 'cs' = Collection Score, 'prop' = Propensão de Pagamento
+
+function erSetModel(model){
+  erModel = model;
+  const body = document.getElementById('er-model-body');
+  if(body) body.innerHTML = erRenderModel();
+}
+
 function erPctBar(pct, cor){
   if(pct===null||pct===undefined) return `<div class="er-bar-track"><div class="er-bar-empty">sem dado ainda</div></div>`;
   const w = Math.max(2, Math.min(100, pct));
   return `<div class="er-bar-track"><div class="er-bar-fill" style="width:${w}%;background:${cor}"></div><span class="er-bar-label">${pct.toFixed(1)}%</span></div>`;
 }
-function renderEsperadoRealizadoHtml(){
-  const er = D && D.esperado_realizado;
+
+function erRenderModel(){
+  const isCs = erModel === 'cs';
+  const modelLabel = isCs ? 'Collection Score' : 'Propensão de Pagamento';
+  const toggle = `
+    <div class="cv-toggle" style="margin-bottom:14px">
+      <button class="cv-toggle-btn ${isCs?'active':''}" onclick="erSetModel('cs')">🎯 Collection Score</button>
+      <button class="cv-toggle-btn ${!isCs?'active':''}" onclick="erSetModel('prop')">💰 Propensão de Pagamento</button>
+    </div>`;
+
+  const er = D && (isCs ? D.esperado_realizado : D.esperado_realizado_propensao);
   if(!er){
-    return `<div class="an-loading">⚠ Este mês não tem Esperado x Realizado calculado (JSON gerado antes de 24/08/2026).</div>`;
+    return `${toggle}<div class="an-loading">⚠ Este mês não tem Esperado x Realizado de ${modelLabel} calculado${isCs?' (JSON gerado antes de 24/08/2026)':' (JSON gerado antes de 25/08/2026)'}.</div>`;
   }
   const letters = ['A','B','C','D'];
   const cores = {A:'#10B981', B:'#3B82F6', C:'#F59E0B', D:'#EF4444'};
   const esp = er.esperado||[], rea = er.realizado||[];
   const totalPendentes = er.n_pendentes_imaturas||0;
   const totalMaduras = rea.reduce((s,r)=>s+(r.n_coorte_madura||0),0);
+  const labelPagtoEsperado = isCs ? 'Esperado — propensão média de pagamento' : 'Esperado — propscore médio da banda';
 
   const rows = letters.map((L,i)=>{
     const e = esp.find(x=>x.banda===L) || {};
@@ -2357,7 +2380,7 @@ function renderEsperadoRealizadoHtml(){
         ${erPctBar(e.pct_ja_em_acordo_hoje, cores[L])}
       </div>
       <div class="er-row-metric">
-        <div class="er-row-metric-label">Esperado — propensão média de pagamento${e.n_escoravel_pagamento?'':' <span class=\"er-nd\">(sem histórico de pagamento no mês)</span>'}</div>
+        <div class="er-row-metric-label">${labelPagtoEsperado}${e.n_escoravel_pagamento?'':' <span class=\"er-nd\">(sem histórico de pagamento no mês)</span>'}</div>
         ${erPctBar(e.pct_pagamento_esperado, cores[L])}
       </div>
       <div class="er-row-metric">
@@ -2373,19 +2396,27 @@ function renderEsperadoRealizadoHtml(){
 
   const avisoMaturacao = totalMaduras===0 ? `
     <div class="er-notice">⏳ <strong>Realizado ainda sem dado</strong> — nenhuma coorte completou ${er.horizonte_dias} dias desde que foi
-    classificada numa banda. A banda do Collection Score só existe desde 20/08/2026, então a primeira leitura real de "Realizado" só fica
+    classificada numa banda de ${modelLabel}. As bandas só existem desde 20/08/2026, então a primeira leitura real de "Realizado" só fica
     disponível a partir de meados de setembro/2026. ${fmt(totalPendentes)} clientes estão com a banda de hoje registrada e aguardando maturação —
     isso é esperado, não é um erro.</div>` : '';
 
+  const heroSub = isCs
+    ? `<strong>Esperado</strong> é uma foto de hoje: dentro de cada banda, quantos clientes já estão em acordo formal
+       e qual a propensão média de pagamento (modelo de Propensão de Pagamento). <strong>Realizado</strong> acompanha coortes de clientes ao
+       longo do tempo e mede, ${er.horizonte_dias} dias depois de terem sido classificados numa banda, quantos de fato converteram em acordo
+       e quantos efetivamente pagaram algo — são duas medidas separadas (conversão em acordo ≠ pagamento efetivo).`
+    : `Mesma mecânica do Collection Score, agora bandeada pelo modelo de <strong>Propensão de Pagamento</strong>. <strong>Esperado</strong>
+       mostra, dentro de cada banda, quantos clientes já estão em acordo hoje e o propscore médio da própria banda — a calibração do modelo
+       (Banda A deveria ficar bem acima da Banda D). <strong>Realizado</strong> mede, ${er.horizonte_dias} dias depois, quantos de fato
+       converteram em acordo e quantos pagaram algo.`;
+
   return `
+    ${toggle}
     <div class="cs-hero" style="background:linear-gradient(135deg,var(--navy) 0%,var(--navy-mid) 100%)">
       <div class="cs-hero-icon">📊</div>
       <div>
-        <div class="cs-hero-title">Esperado x Realizado <span class="cs-hero-badge">Calibração da banda</span></div>
-        <div class="cs-hero-sub"><strong>Esperado</strong> é uma foto de hoje: dentro de cada banda, quantos clientes já estão em acordo formal
-        e qual a propensão média de pagamento (modelo de Propensão de Pagamento). <strong>Realizado</strong> acompanha coortes de clientes ao
-        longo do tempo e mede, ${er.horizonte_dias} dias depois de terem sido classificados numa banda, quantos de fato converteram em acordo
-        e quantos efetivamente pagaram algo — são duas medidas separadas (conversão em acordo ≠ pagamento efetivo), a pedido do usuário.</div>
+        <div class="cs-hero-title">Esperado x Realizado <span class="cs-hero-badge">Calibração da banda — ${modelLabel}</span></div>
+        <div class="cs-hero-sub">${heroSub}</div>
       </div>
     </div>
     ${avisoMaturacao}
@@ -2396,6 +2427,10 @@ function renderEsperadoRealizadoHtml(){
       pagamento efetivo conta qualquer pagamento recebido, dos dois tipos, dentro da janela de ${er.horizonte_dias} dias a partir da data em que o
       cliente foi classificado naquela banda.
     </div>`;
+}
+
+function renderEsperadoRealizadoHtml(){
+  return `<div id="er-model-body">${erRenderModel()}</div>`;
 }
 
 // Aplica todos os filtros da aba EXCETO o de banda — usado tanto pra montar a
