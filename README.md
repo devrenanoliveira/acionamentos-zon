@@ -155,6 +155,8 @@ Quando uma planilha `.xlsx` com "colaborador" no nome está presente na pasta de
 
 Segue o padrão visual dos outros dashboards Z-ON: header navy (`#0F2461`), tab nav (`#1a3680`) com indicador dourado (`#F59E0B`) na aba ativa, modo escuro com persistência via `localStorage`, sem frameworks (HTML/CSS/JS puro + Chart.js via CDN).
 
+**Fundação visual (26/08/2026):** tipografia em **Manrope** (Google Fonts, com fallback pro stack do sistema — única dependência de rede nova do projeto além dos CDNs de Chart.js/xlsx), escala de border-radius com 5 tokens (`--r-xs/sm/md/lg/xl`, de badge a bloco de destaque) no lugar de valores soltos por componente, e um link/ícones consistentes na tab-nav (classe `.nav-link-external`, `stroke-width` uniforme). Puramente estético — nenhum dado, cálculo ou gráfico foi alterado.
+
 **Cabeçalho fixo + rolagem independente (desde 13/08/2026):** header, abas, barra de filtros e a linha "Período · N clientes · Atualizado em: dd/mm/aaaa HH:MM" ficam permanentemente visíveis no topo — só o conteúdo de cada aba rola, dentro de uma área própria (`#scroll-area`). Isso evita que gráficos/cards fiquem cortados ou sobrepostos pela barra de filtros ao rolar a página.
 
 ---
@@ -188,4 +190,4 @@ python3 -m http.server 8000
 
 ---
 
-*README atualizado em 25/08/2026 — corrige uma afirmação anterior de que o Motor Único participava da geração deste dashboard (não participa; confirmado por leitura direta do script), estende o Esperado x Realizado para também cobrir a Propensão de Pagamento (antes só o Collection Score tinha essa calibração viva) e mantém a descrição das funcionalidades de Collection Score/Propensão de Pagamento/Colaboradores (processamento manual, sem workflow automático ativo).*
+*README atualizado em 26/08/2026 — acrescenta a seção "Fundação visual" (Manrope, tokens de border-radius, link/ícones consistentes na tab-nav). Atualização anterior (25/08/2026): corrige uma afirmação anterior de que o Motor Único participava da geração deste dashboard (não participa; confirmado por leitura direta do script), estende o Esperado x Realizado para também cobrir a Propensão de Pagamento (antes só o Collection Score tinha essa calibração viva) e mantém a descrição das funcionalidades de Collection Score/Propensão de Pagamento/Colaboradores (processamento manual, sem workflow automático ativo).*
