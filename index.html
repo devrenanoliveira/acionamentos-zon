@@ -963,6 +963,11 @@ function toggleShowAcordos(){
   renderMatrix();
   renderVolume();
   renderCarteira();
+  // Gênero/Faixa Etária/Categoria Profissão/Faixa de Renda/Score Fatura/
+  // Carteira Interna/Colaboradores (20-21/08/2026): ficavam com o valor
+  // travado até o usuário trocar de sub-aba e voltar, porque este toggle
+  // não as recalculava — só renderCarteira() e as abas antigas.
+  renderAllCartDims();
   // Analítico: reaplicar filtro (exclui/inclui acordos conforme showAcordos)
   if(anInited) anFilter();
 }
@@ -2879,8 +2884,38 @@ function renderAllCartDims(){
 function renderCarteira(){
   if(!D) return;
   const ad = getAD();
-  const atraso = ad.atraso || [];
-  const valor  = ad.valor  || [];
+  // Respeita o toggle global showAcordos — mesma lógica já usada por
+  // getDisplayAtraso()/renderValor() (as abas antigas "Por Atraso"/"Por Valor").
+  // ad.atraso/ad.valor não têm variante "_sem_acordo" pré-calculada no Python
+  // (só as dimensões novas — gênero, idade etc. — têm). Pra atraso dá pra excluir
+  // com exatidão (Acordo é uma linha própria, "saldo" incluído) só filtrando-a.
+  // Pra valor, acordo se espalha por várias faixas e o JSON só traz CONTAGEM por
+  // célula da matriz atraso×valor (sem saldo) — dá pra excluir exatamente do total
+  // de clientes/cobertura por faixa, mas NÃO do saldo por faixa (precisaria de um
+  // valor_sem_acordo pré-calculado no Python, mesmo padrão de gênero/idade/etc.,
+  // ainda não existe). Por isso: contagens por faixa de valor ficam exatas; saldo
+  // por faixa continua incluindo acordo (nota exibida na tabela); e o card "Total
+  // Carteira" em R$ usa a subtração exata do saldo de Acordo (isolado em atraso),
+  // não a soma das faixas — por isso pode não bater com a soma da tabela abaixo
+  // quando o toggle Acordos estiver desligado.
+  const atraso = showAcordos ? (ad.atraso || []) : (ad.atraso || []).filter(r => r.label !== 'Acordo');
+  const acordoSaldoExato = (ad.atraso.find(r=>r.label==='Acordo')||{}).saldo || 0;
+  let valor = ad.valor || [];
+  if(!showAcordos && ad.matrix && D){
+    const faAcordoIdx = typeof D.fa_acordo_idx === 'number' ? D.fa_acordo_idx
+      : (D.fa_labels||[]).indexOf('Acordo');
+    if(faAcordoIdx >= 0 && ad.matrix[faAcordoIdx]){
+      const acordoRow = ad.matrix[faAcordoIdx];
+      valor = valor.map((r,vi)=>{
+        const [acNao, acTot] = acordoRow[vi] || [0,0];
+        const newTot   = Math.max(0, r.total - acTot);
+        const newNao   = Math.max(0, r.nao   - acNao);
+        const newAcion = newTot - newNao;
+        const newPct   = newTot > 0 ? parseFloat((newAcion/newTot*100).toFixed(1)) : (r.pct || 0);
+        return {...r, total:newTot, acion:newAcion, nao:newNao, pct:newPct}; // saldo intencionalmente preservado — ver nota acima
+      });
+    }
+  }
   const isValorMode = carteiraViewMode === 'valor';
   // Métrica ativa por faixa: quantidade de clientes ou soma de saldo (respeita a
   // regra Saldo Contábil > 0 → senão Saldo Total em Atraso/Atualizado, já aplicada no Python)
@@ -2961,7 +2996,15 @@ function renderCarteira(){
   });
 
   // ── Sub 2: Faixas de Valor ───────────────────────────────────
-  const totalValor   = valor.reduce((s,f)=>s+metric(f),0)||1;
+  // somaValorTabela = soma das faixas exibidas na tabela (saldo por faixa ainda
+  // inclui Acordo, ver nota grande no topo da função) — usada como base das
+  // barras/%, pra elas continuarem somando 100% entre si. O card "Total carteira"
+  // em R$, com o toggle desligado, usa a subtração exata em vez dessa soma — por
+  // isso pode não bater com a soma da tabela abaixo (nota exibida na tabela).
+  const somaValorTabela = valor.reduce((s,f)=>s+metric(f),0)||1;
+  const totalValor = (isValorMode && !showAcordos)
+    ? Math.max(1, ad.valor.reduce((s,f)=>s+(f.saldo||0),0) - acordoSaldoExato)
+    : somaValorTabela;
   const maiorFv      = valor.reduce((a,f)=>metric(f)>metric(a)?f:a,{total:0,saldo:0,label:'—'});
   // Concentração: top-2 faixas de valor mais representativas na métrica ativa
   const sorted2 = [...valor].sort((a,b)=>metric(b)-metric(a)).slice(0,2);
@@ -2970,14 +3013,14 @@ function renderCarteira(){
   document.getElementById('kpi-c-valor').innerHTML =
     kpiHtml('Total carteira',  fmtM(totalValor),  'blue',   '') +
     kpiHtml('Maior faixa',     maiorFv.label,    'amber',  fmtM(metric(maiorFv))) +
-    kpiHtml('Top 2 faixas',    (conc2/totalValor*100).toFixed(1)+'%', 'purple', 'concentração') +
+    kpiHtml('Top 2 faixas',    (conc2/somaValorTabela*100).toFixed(1)+'%', 'purple', 'concentração') +
     kpiHtml('Faixas c/ clientes', valor.filter(f=>f.total>0).length, '', 'de '+valor.length+' faixas');
 
   const maxFv = Math.max(...valor.map(metric));
   const valorAtivos = valor.filter(f=>f.total>0);
   document.getElementById('c-valor-bars').innerHTML = valorAtivos.map((f,i)=>{
     const barW = (metric(f)/maxFv*100).toFixed(1);
-    const pct  = (metric(f)/totalValor*100).toFixed(1);
+    const pct  = (metric(f)/somaValorTabela*100).toFixed(1);
     const cor  = C_COLORS[i % C_COLORS.length];
     return `<div class="cf-row" style="grid-template-columns:100px 1fr 50px 110px">
       <span class="cf-label">${f.label}</span>
@@ -2995,11 +3038,21 @@ function renderCarteira(){
     <div class="cf-row" style="grid-template-columns:100px 110px 80px 80px 80px 80px">
       <span class="cf-label" style="color:${C_COLORS[i%C_COLORS.length]}">${f.label}</span>
       <span class="cf-val">${fmtM(metric(f))}</span>
-      <span class="cf-val">${(metric(f)/totalValor*100).toFixed(1)}%</span>
+      <span class="cf-val">${(metric(f)/somaValorTabela*100).toFixed(1)}%</span>
       <span class="cf-val" style="color:#059669">${fmt(f.acion)}</span>
       <span class="cf-val" style="color:${f.nao>0?'#DC2626':'#059669'}">${fmt(f.nao)}</span>
       <span class="cf-val"><span class="${chipClass(f.pct)}">${f.pct.toFixed(1)}%</span></span>
     </div>`).join('');
+  if(isValorMode && !showAcordos){
+    const note = document.getElementById('c-valor-table-note');
+    if(!note){
+      document.getElementById('c-valor-table').insertAdjacentHTML('afterend',
+        '<div id="c-valor-table-note" style="font-size:11px;color:#94A3B8;margin-top:6px">O saldo por faixa ainda inclui clientes em Acordo (quebra exata por faixa pendente de um dado adicional do motor) — o card "Total carteira" acima já exclui.</div>');
+    }
+  } else {
+    const note = document.getElementById('c-valor-table-note');
+    if(note) note.remove();
+  }
 
   if(cChartValor){ cChartValor.destroy(); cChartValor=null; }
   cChartValor = new Chart(document.getElementById('chart-c-valor'),{
@@ -3010,7 +3063,7 @@ function renderCarteira(){
     },
     options:{responsive:true,maintainAspectRatio:false,cutout:'52%',
       plugins:{legend:{display:false},
-        tooltip:{...TT,callbacks:{label:ctx=>' '+fmtM(ctx.parsed)+' ('+((ctx.parsed/totalValor)*100).toFixed(1)+'%)'}}}
+        tooltip:{...TT,callbacks:{label:ctx=>' '+fmtM(ctx.parsed)+' ('+((ctx.parsed/somaValorTabela)*100).toFixed(1)+'%)'}}}
     }
   });
 

@@ -145,7 +145,7 @@ Quando uma planilha `.xlsx` com "colaborador" no nome está presente na pasta de
 | **Período** (mês) | Cabeçalho | Troca todos os dados para o mês selecionado |
 | **Assessoria** | Cabeçalho | Filtra todas as abas para uma assessoria — só aparece com 2+ assessorias nos dados |
 | **Tipo de Ação / Canal-Motivo** | Barra de filtros (oculta na aba Carteira) | Filtra Analítico e Matriz por linha; Volume só pelo Tipo de Ação; Geral/Atraso/Valor mostram aviso (dados consolidados) |
-| **🤝 Acordos** (global) | Barra de filtros | Desligado por padrão — exclui clientes em acordo das métricas de cobertura, em todas as abas exceto Carteira |
+| **🤝 Acordos** (global) | Barra de filtros | Desligado por padrão — exclui clientes em acordo das métricas de cobertura, em todas as abas incluindo Carteira (corrigido em 26/08/2026 — a aba Carteira tinha uma implementação própria de "Faixas de Atraso/Valor/Segmentos" que não respeitava o toggle; ver CLAUDE.md). Ressalva: o saldo em R$ *por faixa de valor* dentro de "Faixas de Valor" ainda inclui Acordo (só o card "Total carteira" está exato) até o Python calcular um `valor_sem_acordo` |
 | **🤝 Acordo** (local, Analítico) | Aba Analítico | Isola só os clientes em acordo — tem prioridade sobre o toggle global |
 | **🔢 Quantidade / 💰 Valor (R$)** | Aba Carteira | Alterna KPIs/gráficos/tabela entre contagem de clientes e soma de saldo |
 
