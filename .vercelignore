@@ -1,1 +1,4 @@
 data/
+requirements.txt
+atualizar_dashboard.py
+gerar_jsons_acionamentos.py

@@ -2,7 +2,9 @@
 
 Dashboard de acompanhamento de cobertura de acionamentos da carteira Z-ON Card, com histórico mensal navegável, filtro por assessoria (Fácil Resultado, PG+, Decisão) e um modelo de priorização (Collection Score), publicado via GitHub Pages.
 
-**URL:** https://devrenanoliveira.github.io/acionamentos-zon/
+**URL:** https://devrenanoliveira.github.io/acionamentos-zon/ (GitHub Pages, público, sem login — produção atual)
+
+> ⚠️ **Migração de login em andamento** (branch `clerk-login`, não mergeada em `main`): login individual por e-mail (Clerk, mesmo app do `zon-dashboard-powered` — login único entre os dois) + hospedagem na Vercel, protegendo os dados de carteira/acionamentos (inclui coluna de Telefone(s) desde 27/08/2026, dado pessoal real). Enquanto não houver corte oficial, o link acima continua sendo a produção real. Detalhes técnicos no `CLAUDE.md` do workspace, seção "Login individual (Clerk + Vercel)".
 
 ## Abas do dashboard
 
