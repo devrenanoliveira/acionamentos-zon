@@ -226,6 +226,23 @@ body.dark .matrix-detail{background:#162032;border-color:rgba(59,130,246,.3)}
 .progress-bar{display:flex;height:10px;border-radius:6px;overflow:hidden;margin-bottom:4px}
 .progress-labels{display:flex;justify-content:space-between;font-size:10px;color:var(--ink3)}
 .chart-wrap{position:relative;width:100%}
+/* ── EXPANDIR GRÁFICO (botão + modal) ────────────────────────
+   Botão discreto (só aparece no hover do wrap) que abre uma SEGUNDA
+   instância do Chart.js num modal maior, construída pelo mesmo builder de
+   config do gráfico original — mesma interação/tooltip, gráfico original
+   nunca é destruído/movido. Ver registerExpandable()/expandChart() no
+   <script> abaixo. */
+.chart-expand-btn{position:absolute;top:6px;right:6px;width:24px;height:24px;border:none;border-radius:var(--r-sm);background:rgba(15,23,42,.06);color:var(--ink3);cursor:pointer;display:flex;align-items:center;justify-content:center;opacity:0;transition:opacity .15s,background-color .15s,color .15s;z-index:2}
+.chart-wrap:hover .chart-expand-btn,.donut-canvas-wrap:hover .chart-expand-btn,.motivos-donut-wrap:hover .chart-expand-btn,.chart-expand-btn:focus-visible{opacity:1}
+.chart-expand-btn:hover{background:var(--navy);color:#fff}
+body.dark .chart-expand-btn{background:rgba(255,255,255,.08);color:#94a3b8}
+body.dark .chart-expand-btn:hover{background:var(--blue-dark);color:#fff}
+.chart-modal-overlay{position:fixed;inset:0;background:rgba(11,11,11,.55);display:none;align-items:center;justify-content:center;padding:40px;z-index:1000}
+.chart-modal-overlay.open{display:flex}
+.chart-modal-content{position:relative;background:var(--card);border-radius:var(--r-lg);padding:28px;width:min(1100px,100%);height:min(640px,100%);display:flex;box-shadow:0 20px 60px rgba(0,0,0,.35)}
+.chart-modal-canvas-wrap{position:relative;flex:1}
+.chart-modal-close{position:absolute;top:14px;right:14px;width:30px;height:30px;border:none;border-radius:var(--r-sm);background:transparent;color:var(--ink3);cursor:pointer;display:flex;align-items:center;justify-content:center;transition:background-color .15s,color .15s}
+.chart-modal-close:hover{background:var(--bg);color:var(--ink)}
 /* ANALÍTICO */
 .an-filters{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px;align-items:center}
 .an-search{flex:1;min-width:180px;padding:7px 10px;border:1px solid var(--border);border-radius:var(--r-md);font-size:13px;color:var(--ink);background:var(--card);outline:none}
@@ -435,18 +452,18 @@ body.dark .colab-tab-banner{background:rgba(217,119,6,.1)}
     <div>
       <div class="sec-label">Cobertura da carteira</div>
       <div style="display:flex;flex-direction:column;align-items:center;gap:12px">
-        <div class="donut-canvas-wrap"><canvas id="chart-donut"></canvas></div>
+        <div class="donut-canvas-wrap"><canvas id="chart-donut"></canvas><button class="chart-expand-btn" onclick="expandChart('chart-donut')" title="Ampliar gráfico"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3M3 16v3a2 2 0 0 0 2 2h3m11-5v3a2 2 0 0 1-2 2h-3"/></svg></button></div>
         <div style="width:100%" id="donut-legend"></div>
       </div>
     </div>
     <div>
       <div class="sec-label">Frequência de acionamentos</div>
-      <div class="chart-wrap" style="height:160px"><canvas id="chart-freq"></canvas></div>
+      <div class="chart-wrap" style="height:160px"><canvas id="chart-freq"></canvas><button class="chart-expand-btn" onclick="expandChart('chart-freq')" title="Ampliar gráfico"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3M3 16v3a2 2 0 0 0 2 2h3m11-5v3a2 2 0 0 1-2 2h-3"/></svg></button></div>
     </div>
   </div>
   <div class="sec-label" id="motivos-label">Resultado dos acionamentos telefônicos</div>
   <div class="motivos-section">
-    <div class="motivos-donut-wrap"><canvas id="chart-motivos-donut"></canvas></div>
+    <div class="motivos-donut-wrap"><canvas id="chart-motivos-donut"></canvas><button class="chart-expand-btn" onclick="expandChart('chart-motivos-donut')" title="Ampliar gráfico"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3M3 16v3a2 2 0 0 0 2 2h3m11-5v3a2 2 0 0 1-2 2h-3"/></svg></button></div>
     <div style="flex:1;min-width:0" id="motivos-legend"></div>
   </div>
 </div>
@@ -523,10 +540,10 @@ body.dark .colab-tab-banner{background:rgba(217,119,6,.1)}
     <span style="display:flex;align-items:center;gap:5px;font-size:11px;color:#64748B"><span style="width:9px;height:9px;border-radius:2px;background:#7C3AED;display:inline-block"></span>Telefônico</span>
     <span style="font-size:11px;color:#64748B">· Fins de semana com volume reduzido</span>
   </div>
-  <div class="chart-wrap" style="height:230px"><canvas id="chart-volume"></canvas></div>
+  <div class="chart-wrap" style="height:230px"><canvas id="chart-volume"></canvas><button class="chart-expand-btn" onclick="expandChart('chart-volume')" title="Ampliar gráfico"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3M3 16v3a2 2 0 0 0 2 2h3m11-5v3a2 2 0 0 1-2 2h-3"/></svg></button></div>
   <div id="vol-efetividade-section">
     <div class="sec-label">Efetividade das ligações telefônicas</div>
-    <div class="chart-wrap" style="height:260px"><canvas id="chart-motivos-bar"></canvas></div>
+    <div class="chart-wrap" style="height:260px"><canvas id="chart-motivos-bar"></canvas><button class="chart-expand-btn" onclick="expandChart('chart-motivos-bar')" title="Ampliar gráfico"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3M3 16v3a2 2 0 0 0 2 2h3m11-5v3a2 2 0 0 1-2 2h-3"/></svg></button></div>
   </div>
 </div>
 
@@ -563,7 +580,7 @@ body.dark .colab-tab-banner{background:rgba(217,119,6,.1)}
       </div>
       <div>
         <div class="sec-label">Composição da carteira</div>
-        <div class="chart-wrap" style="height:260px"><canvas id="chart-c-atraso"></canvas></div>
+        <div class="chart-wrap" style="height:260px"><canvas id="chart-c-atraso"></canvas><button class="chart-expand-btn" onclick="expandChart('chart-c-atraso')" title="Ampliar gráfico"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3M3 16v3a2 2 0 0 0 2 2h3m11-5v3a2 2 0 0 1-2 2h-3"/></svg></button></div>
       </div>
     </div>
     <div class="sec-label" style="margin-top:4px">Detalhe por faixa</div>
@@ -580,7 +597,7 @@ body.dark .colab-tab-banner{background:rgba(217,119,6,.1)}
       </div>
       <div>
         <div class="sec-label">Composição por valor</div>
-        <div class="chart-wrap" style="height:260px"><canvas id="chart-c-valor"></canvas></div>
+        <div class="chart-wrap" style="height:260px"><canvas id="chart-c-valor"></canvas><button class="chart-expand-btn" onclick="expandChart('chart-c-valor')" title="Ampliar gráfico"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3M3 16v3a2 2 0 0 0 2 2h3m11-5v3a2 2 0 0 1-2 2h-3"/></svg></button></div>
       </div>
     </div>
     <div class="sec-label" style="margin-top:4px">Detalhe por faixa de valor</div>
@@ -593,7 +610,7 @@ body.dark .colab-tab-banner{background:rgba(217,119,6,.1)}
     <div style="display:grid;grid-template-columns:240px 1fr;gap:20px;align-items:start">
       <div>
         <div class="sec-label">Distribuição por segmento</div>
-        <div class="donut-canvas-wrap"><canvas id="chart-c-seg-donut"></canvas></div>
+        <div class="donut-canvas-wrap"><canvas id="chart-c-seg-donut"></canvas><button class="chart-expand-btn" onclick="expandChart('chart-c-seg-donut')" title="Ampliar gráfico"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3M3 16v3a2 2 0 0 0 2 2h3m11-5v3a2 2 0 0 1-2 2h-3"/></svg></button></div>
         <div id="c-seg-donut-legend" style="margin-top:10px"></div>
       </div>
       <div>
@@ -609,7 +626,7 @@ body.dark .colab-tab-banner{background:rgba(217,119,6,.1)}
     <div class="kpi-grid" id="kpi-c-genero"></div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;align-items:start">
       <div><div class="sec-label">Distribuição — % da carteira</div><div id="c-genero-bars"></div></div>
-      <div><div class="sec-label">Composição</div><div class="chart-wrap" style="height:260px"><canvas id="chart-c-genero"></canvas></div></div>
+      <div><div class="sec-label">Composição</div><div class="chart-wrap" style="height:260px"><canvas id="chart-c-genero"></canvas><button class="chart-expand-btn" onclick="expandChart('chart-c-genero')" title="Ampliar gráfico"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3M3 16v3a2 2 0 0 0 2 2h3m11-5v3a2 2 0 0 1-2 2h-3"/></svg></button></div></div>
     </div>
     <div class="sec-label" style="margin-top:4px">Detalhe</div>
     <div id="c-genero-table"></div>
@@ -619,7 +636,7 @@ body.dark .colab-tab-banner{background:rgba(217,119,6,.1)}
     <div class="kpi-grid" id="kpi-c-idade"></div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;align-items:start">
       <div><div class="sec-label">Distribuição — % da carteira</div><div id="c-idade-bars"></div></div>
-      <div><div class="sec-label">Composição</div><div class="chart-wrap" style="height:260px"><canvas id="chart-c-idade"></canvas></div></div>
+      <div><div class="sec-label">Composição</div><div class="chart-wrap" style="height:260px"><canvas id="chart-c-idade"></canvas><button class="chart-expand-btn" onclick="expandChart('chart-c-idade')" title="Ampliar gráfico"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3M3 16v3a2 2 0 0 0 2 2h3m11-5v3a2 2 0 0 1-2 2h-3"/></svg></button></div></div>
     </div>
     <div class="sec-label" style="margin-top:4px">Detalhe</div>
     <div id="c-idade-table"></div>
@@ -629,7 +646,7 @@ body.dark .colab-tab-banner{background:rgba(217,119,6,.1)}
     <div class="kpi-grid" id="kpi-c-catprof"></div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;align-items:start">
       <div><div class="sec-label">Distribuição — % da carteira</div><div id="c-catprof-bars"></div></div>
-      <div><div class="sec-label">Composição</div><div class="chart-wrap" style="height:260px"><canvas id="chart-c-catprof"></canvas></div></div>
+      <div><div class="sec-label">Composição</div><div class="chart-wrap" style="height:260px"><canvas id="chart-c-catprof"></canvas><button class="chart-expand-btn" onclick="expandChart('chart-c-catprof')" title="Ampliar gráfico"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3M3 16v3a2 2 0 0 0 2 2h3m11-5v3a2 2 0 0 1-2 2h-3"/></svg></button></div></div>
     </div>
     <div class="sec-label" style="margin-top:4px">Detalhe</div>
     <div id="c-catprof-table"></div>
@@ -639,7 +656,7 @@ body.dark .colab-tab-banner{background:rgba(217,119,6,.1)}
     <div class="kpi-grid" id="kpi-c-renda"></div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;align-items:start">
       <div><div class="sec-label">Distribuição — % da carteira</div><div id="c-renda-bars"></div></div>
-      <div><div class="sec-label">Composição</div><div class="chart-wrap" style="height:260px"><canvas id="chart-c-renda"></canvas></div></div>
+      <div><div class="sec-label">Composição</div><div class="chart-wrap" style="height:260px"><canvas id="chart-c-renda"></canvas><button class="chart-expand-btn" onclick="expandChart('chart-c-renda')" title="Ampliar gráfico"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3M3 16v3a2 2 0 0 0 2 2h3m11-5v3a2 2 0 0 1-2 2h-3"/></svg></button></div></div>
     </div>
     <div class="sec-label" style="margin-top:4px">Detalhe</div>
     <div id="c-renda-table"></div>
@@ -649,7 +666,7 @@ body.dark .colab-tab-banner{background:rgba(217,119,6,.1)}
     <div class="kpi-grid" id="kpi-c-score"></div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;align-items:start">
       <div><div class="sec-label">Distribuição — % da carteira</div><div id="c-score-bars"></div></div>
-      <div><div class="sec-label">Composição</div><div class="chart-wrap" style="height:260px"><canvas id="chart-c-score"></canvas></div></div>
+      <div><div class="sec-label">Composição</div><div class="chart-wrap" style="height:260px"><canvas id="chart-c-score"></canvas><button class="chart-expand-btn" onclick="expandChart('chart-c-score')" title="Ampliar gráfico"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3M3 16v3a2 2 0 0 0 2 2h3m11-5v3a2 2 0 0 1-2 2h-3"/></svg></button></div></div>
     </div>
     <div class="sec-label" style="margin-top:4px">Detalhe</div>
     <div id="c-score-table"></div>
@@ -659,7 +676,7 @@ body.dark .colab-tab-banner{background:rgba(217,119,6,.1)}
     <div class="kpi-grid" id="kpi-c-agrupador"></div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;align-items:start">
       <div><div class="sec-label">Distribuição — % da carteira</div><div id="c-agrupador-bars"></div></div>
-      <div><div class="sec-label">Composição</div><div class="chart-wrap" style="height:260px"><canvas id="chart-c-agrupador"></canvas></div></div>
+      <div><div class="sec-label">Composição</div><div class="chart-wrap" style="height:260px"><canvas id="chart-c-agrupador"></canvas><button class="chart-expand-btn" onclick="expandChart('chart-c-agrupador')" title="Ampliar gráfico"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3M3 16v3a2 2 0 0 0 2 2h3m11-5v3a2 2 0 0 1-2 2h-3"/></svg></button></div></div>
     </div>
     <div class="sec-label" style="margin-top:4px">Detalhe</div>
     <div id="c-agrupador-table"></div>
@@ -674,7 +691,7 @@ body.dark .colab-tab-banner{background:rgba(217,119,6,.1)}
     <div class="kpi-grid" id="kpi-c-colaboradores"></div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;align-items:start">
       <div><div class="sec-label">Distribuição por faixa de atraso — % dos colaboradores devedores</div><div id="c-colaboradores-bars"></div></div>
-      <div><div class="sec-label">Composição</div><div class="chart-wrap" style="height:260px"><canvas id="chart-c-colaboradores"></canvas></div></div>
+      <div><div class="sec-label">Composição</div><div class="chart-wrap" style="height:260px"><canvas id="chart-c-colaboradores"></canvas><button class="chart-expand-btn" onclick="expandChart('chart-c-colaboradores')" title="Ampliar gráfico"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3M3 16v3a2 2 0 0 0 2 2h3m11-5v3a2 2 0 0 1-2 2h-3"/></svg></button></div></div>
     </div>
     <div class="sec-label" style="margin-top:4px">Detalhe por faixa de atraso</div>
     <div id="c-colaboradores-table"></div>
@@ -704,7 +721,42 @@ body.dark .colab-tab-banner{background:rgba(217,119,6,.1)}
 </div>
 </div>
 
+<!-- Modal de ampliação de gráfico — reaproveitado por qualquer canvas com botão de expandir -->
+<div id="chartModalOverlay" class="chart-modal-overlay" onclick="if(event.target===this) closeChartModal()">
+  <div class="chart-modal-content">
+    <button class="chart-modal-close" onclick="closeChartModal()" title="Fechar">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+    </button>
+    <div id="chartModalCanvasWrap" class="chart-modal-canvas-wrap"><canvas id="chartModalCanvas"></canvas></div>
+  </div>
+</div>
+
 <script>
+// ─── EXPANDIR GRÁFICO ───────────────────────────────────────
+// Cada gráfico expansível registra um builder (função que devolve uma
+// config Chart.js nova a cada chamada) via registerExpandable(). Ao clicar,
+// expandChart() cria uma SEGUNDA instância no modal a partir desse builder —
+// nunca lendo config de volta de uma instância já existente (Chart.js
+// embrulha options processadas em Proxies internas que travam com
+// "Recursion detected: _scriptable->_scriptable" se reaproveitadas), e nunca
+// movendo o <canvas> original (chart.resize() não recalcula corretamente
+// depois de mover pra um container de outro tamanho).
+const _chartRegistry = {};
+function registerExpandable(canvasId, buildConfig) { _chartRegistry[canvasId] = buildConfig; }
+let _chartModalInstance = null;
+function expandChart(canvasId) {
+  const build = _chartRegistry[canvasId];
+  if (!build) return;
+  document.getElementById('chartModalOverlay').classList.add('open');
+  if (_chartModalInstance) _chartModalInstance.destroy();
+  _chartModalInstance = new Chart(document.getElementById('chartModalCanvas'), build());
+}
+function closeChartModal() {
+  document.getElementById('chartModalOverlay').classList.remove('open');
+  if (_chartModalInstance) { _chartModalInstance.destroy(); _chartModalInstance = null; }
+}
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeChartModal(); });
+
 // ═══════════════════════════════════════════
 // STATE
 // ═══════════════════════════════════════════
@@ -1436,13 +1488,15 @@ function renderGeral(){
   const TT={backgroundColor:'#fff',borderColor:GRID,borderWidth:1,titleColor:'#0F172A',bodyColor:'#64748B',padding:10,cornerRadius:6};
   Chart.defaults.font.family='system-ui,-apple-system,sans-serif';
 
-  charts.donut = new Chart(document.getElementById('chart-donut'),{
+  const donutCfg = () => ({
     type:'doughnut',
     data:{datasets:[{data:[ef_acion,ef_nao],backgroundColor:['#1D4ED8','#EF4444'],borderWidth:0}]},
     options:{responsive:true,maintainAspectRatio:false,cutout:'62%',plugins:{legend:{display:false},tooltip:{enabled:false}}}
   });
+  charts.donut = new Chart(document.getElementById('chart-donut'), donutCfg());
+  registerExpandable('chart-donut', donutCfg);
 
-  charts.freq = new Chart(document.getElementById('chart-freq'),{
+  const freqCfg = () => ({
     type:'bar',
     data:{labels:ad.freq.map(d=>d.n),datasets:[{data:ad.freq.map(d=>d.v),backgroundColor:['#DC2626','#F97316','#F59E0B','#7C3AED','#3B82F6','#1D4ED8','#059669'],borderRadius:3}]},
     options:{responsive:true,maintainAspectRatio:false,
@@ -1450,9 +1504,11 @@ function renderGeral(){
       scales:{x:{grid:{display:false},ticks:{color:MUTED,font:{size:10}}},y:{grid:{color:GRID},ticks:{color:MUTED,font:{size:9},callback:v=>v>=1000?`${(v/1000).toFixed(0)}k`:v}}}
     }
   });
+  charts.freq = new Chart(document.getElementById('chart-freq'), freqCfg());
+  registerExpandable('chart-freq', freqCfg);
 
   const totalTel = ad.total_tel||1;
-  charts.motivosDonut = new Chart(document.getElementById('chart-motivos-donut'),{
+  const motivosDonutCfg = () => ({
     type:'doughnut',
     data:{datasets:[{data:ad.motivos.map(d=>d.value),backgroundColor:ad.motivos.map(d=>d.color),borderWidth:0}]},
     options:{responsive:true,maintainAspectRatio:false,cutout:'50%',
@@ -1460,6 +1516,8 @@ function renderGeral(){
         label:ctx=>` ${fmt(ctx.parsed)} (${((ctx.parsed/totalTel)*100).toFixed(1)}%)`
       }}}}
   });
+  charts.motivosDonut = new Chart(document.getElementById('chart-motivos-donut'), motivosDonutCfg());
+  registerExpandable('chart-motivos-donut', motivosDonutCfg);
 
   document.getElementById('motivos-label').textContent =
     `Resultado dos acionamentos telefônicos (${fmt(ad.total_tel)} ligações)`;
@@ -1840,7 +1898,7 @@ function renderVolume(){
     showDigital ? {label:'Digital',    data:vol.map(getDig), backgroundColor:'#1D4ED8', stack:'a'} : null,
     showTel     ? {label:'Telefônico', data:vol.map(getTel), backgroundColor:'#7C3AED', stack:'a', borderRadius:{topLeft:3,topRight:3}} : null,
   ].filter(Boolean);
-  charts.volume = new Chart(document.getElementById('chart-volume'),{
+  const volumeCfg = () => ({
     type:'bar',
     data:{
       labels:vol.map(d=>d.dia+(d.fds?' ↓':'')),
@@ -1863,10 +1921,12 @@ function renderVolume(){
               y:{grid:{color:GRID},stacked:true,ticks:{color:MUTED,font:{size:9},callback:v=>v>=1000?`${(v/1000).toFixed(0)}k`:v}}}
     }
   });
+  charts.volume = new Chart(document.getElementById('chart-volume'), volumeCfg());
+  registerExpandable('chart-volume', volumeCfg);
 
   const motivos = ad.motivos||[];
   if(motivos.length){
-    charts.motivosBar = new Chart(document.getElementById('chart-motivos-bar'),{
+    const motivosBarCfg = () => ({
       type:'bar',
       data:{
         labels:motivos.map(m=>m.name),
@@ -1880,6 +1940,8 @@ function renderVolume(){
                 y:{grid:{display:false},ticks:{color:'#0F172A',font:{size:11}}}}
       }
     });
+    charts.motivosBar = new Chart(document.getElementById('chart-motivos-bar'), motivosBarCfg());
+    registerExpandable('chart-motivos-bar', motivosBarCfg);
   }
 }
 
@@ -2879,13 +2941,15 @@ function renderCartDim(dimId, title){
   if(canvas){
     const GRID='#E2E8F0';
     const TT={backgroundColor:'#fff',borderColor:GRID,borderWidth:1,titleColor:'#0F172A',bodyColor:'#64748B',padding:10,cornerRadius:6};
-    cDimCharts[dimId] = new Chart(canvas,{
+    const dimCfg = () => ({
       type:'doughnut',
       data:{labels:ativos.map(f=>f.label), datasets:[{data:ativos.map(metric), backgroundColor:ativos.map((_,i)=>C_COLORS[i%C_COLORS.length]), borderWidth:2, borderColor:'#fff'}]},
       options:{responsive:true,maintainAspectRatio:false,cutout:'52%',
         plugins:{legend:{display:false},
           tooltip:{...TT,callbacks:{label:ctx=>' '+fmtM(ctx.parsed)+' ('+((ctx.parsed/total)*100).toFixed(1)+'%)'}}}}
     });
+    cDimCharts[dimId] = new Chart(canvas, dimCfg());
+    registerExpandable('chart-c-'+dimId, dimCfg);
   }
 }
 
@@ -3007,7 +3071,7 @@ function renderCarteira(){
   if(cChartAtraso){ cChartAtraso.destroy(); cChartAtraso=null; }
   const GRID='#E2E8F0',MUTED='#94A3B8';
   const TT={backgroundColor:'#fff',borderColor:GRID,borderWidth:1,titleColor:'#0F172A',bodyColor:'#64748B',padding:10,cornerRadius:6};
-  cChartAtraso = new Chart(document.getElementById('chart-c-atraso'),{
+  const atrasoCfg = () => ({
     type:'doughnut',
     data:{
       labels: atrasoAtivos.map(f=>f.label),
@@ -3018,6 +3082,8 @@ function renderCarteira(){
         tooltip:{...TT,callbacks:{label:ctx=>' '+fmtM(ctx.parsed)+' ('+((ctx.parsed/total)*100).toFixed(1)+'%)'}}}
     }
   });
+  cChartAtraso = new Chart(document.getElementById('chart-c-atraso'), atrasoCfg());
+  registerExpandable('chart-c-atraso', atrasoCfg);
 
   // ── Sub 2: Faixas de Valor ───────────────────────────────────
   // somaValorTabela = soma das faixas exibidas na tabela (saldo por faixa ainda
@@ -3079,7 +3145,7 @@ function renderCarteira(){
   }
 
   if(cChartValor){ cChartValor.destroy(); cChartValor=null; }
-  cChartValor = new Chart(document.getElementById('chart-c-valor'),{
+  const valorCfg = () => ({
     type:'doughnut',
     data:{
       labels: valorAtivos.map(f=>f.label),
@@ -3090,6 +3156,8 @@ function renderCarteira(){
         tooltip:{...TT,callbacks:{label:ctx=>' '+fmtM(ctx.parsed)+' ('+((ctx.parsed/somaValorTabela)*100).toFixed(1)+'%)'}}}
     }
   });
+  cChartValor = new Chart(document.getElementById('chart-c-valor'), valorCfg());
+  registerExpandable('chart-c-valor', valorCfg);
 
   // ── Sub 3: Segmentos ─────────────────────────────────────────
   const segs = SEG_DEFS.map(s=>{
@@ -3109,7 +3177,7 @@ function renderCarteira(){
 
   // Donut segmentos
   if(cChartSeg){ cChartSeg.destroy(); cChartSeg=null; }
-  cChartSeg = new Chart(document.getElementById('chart-c-seg-donut'),{
+  const segCfg = () => ({
     type:'doughnut',
     data:{
       labels: segs.map(s=>s.label),
@@ -3120,6 +3188,8 @@ function renderCarteira(){
         tooltip:{...TT,callbacks:{label:ctx=>' '+fmtM(ctx.parsed)+' ('+((ctx.parsed/segTotal)*100).toFixed(1)+'%)'}}}
     }
   });
+  cChartSeg = new Chart(document.getElementById('chart-c-seg-donut'), segCfg());
+  registerExpandable('chart-c-seg-donut', segCfg);
   document.getElementById('c-seg-donut-legend').innerHTML = segs.map(sg=>`
     <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px">
       <span style="width:10px;height:10px;border-radius:2px;background:${sg.cor};flex-shrink:0;display:inline-block"></span>
