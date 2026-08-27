@@ -1,0 +1,7 @@
+{
+  "name": "acionamentos-zon",
+  "private": true,
+  "dependencies": {
+    "@clerk/backend": "^1.0.0"
+  }
+}

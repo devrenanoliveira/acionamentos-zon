@@ -6,6 +6,22 @@
 <title>Carteira de Cobrança | Acionamentos</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+
+<!-- Clerk — mesmo app "Z-ON Dashboards" do zon-dashboard-powered (login único
+     entre dashboards). Bundle de UI tem que vir ANTES do SDK principal. -->
+<script
+  defer
+  crossorigin="anonymous"
+  src="https://touched-gecko-3749.clerk.accounts.dev/npm/@clerk/ui@1/dist/ui.browser.js"
+  type="text/javascript"
+></script>
+<script
+  defer
+  crossorigin="anonymous"
+  data-clerk-publishable-key="pk_test_dG91Y2hlZC1nZWNrby0zNzQ5LmNsZXJrLmFjY291bnRzLmRldiQ"
+  src="https://touched-gecko-3749.clerk.accounts.dev/npm/@clerk/clerk-js@6/dist/clerk.browser.js"
+  type="text/javascript"
+></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -342,6 +358,14 @@ body.dark .colab-tab-banner{background:rgba(217,119,6,.1)}
 </head>
 <body>
 <script>try{if(localStorage.getItem('acionamentosDarkMode')==='true')document.body.classList.add('dark')}catch(e){}</script>
+
+<!-- ── LOGIN (Clerk) — visível até o usuário autenticar ──── -->
+<div id="auth-screen" style="position:fixed;inset:0;z-index:9999;background:var(--bg,#F1F5F9);display:flex;align-items:center;justify-content:center;">
+  <div id="sign-in"></div>
+</div>
+
+<!-- ── DASHBOARD — só aparece depois do login (ver script no fim do arquivo) -->
+<div id="dashboard-root" style="display:none">
 <div class="loading-overlay" id="loading-overlay">
   <div class="spinner"></div>
   <div class="loading-txt" id="loading-txt">Carregando dados…</div>
@@ -704,7 +728,25 @@ body.dark .colab-tab-banner{background:rgba(217,119,6,.1)}
 </div>
 </div>
 
+</div><!-- /dashboard-root -->
+
 <script>
+// ═══════════════════════════════════════════
+// AUTH (Clerk) — todo fetch de dado passa por aqui, nunca direto em data/
+// ═══════════════════════════════════════════
+async function _fetchAutenticado(nomeArquivo) {
+  const token = await Clerk.session.getToken();
+  const r = await fetch('/api/data?file=' + encodeURIComponent(nomeArquivo) + '&v=' + Date.now(), {
+    headers: { Authorization: 'Bearer ' + token },
+    cache: 'no-store'
+  });
+  if (!r.ok) {
+    const body = await r.json().catch(function() { return {}; });
+    throw new Error(body.error || ('HTTP ' + r.status + ' ao carregar ' + nomeArquivo));
+  }
+  return r.json();
+}
+
 // ═══════════════════════════════════════════
 // STATE
 // ═══════════════════════════════════════════
@@ -891,9 +933,7 @@ async function loadAnaliticoSilent(){
   anLoading = true;
   const mesId = document.getElementById('mes-select').value;
   try {
-    const r = await fetch(`data/${mesId}-analitico.json?v=`+Date.now());
-    if(!r.ok) throw new Error('HTTP '+r.status);
-    ANALITICO = normalizeAnalitico(await r.json());
+    ANALITICO = normalizeAnalitico(await _fetchAutenticado(mesId + '-analitico.json'));
     anInited = true; anLoading = false;
     // Deixa Analítico e Propensão prontos em background também, mesmo que o
     // usuário esteja em outra aba — evita placeholder "clique pra carregar"
@@ -1284,8 +1324,7 @@ function normalizeAnalitico(raw) {
 // ═══════════════════════════════════════════
 async function loadIndex(){
   try {
-    const r = await fetch('data/index.json?v='+Date.now());
-    const idx = await r.json();
+    const idx = await _fetchAutenticado('index.json');
     const sel = document.getElementById('mes-select');
     sel.innerHTML = '';
     idx.meses.forEach(m=>{
@@ -1297,7 +1336,7 @@ async function loadIndex(){
     await loadMes(idx.meses[0].id);
   } catch(e) {
     console.error('Erro ao carregar índice:', e);
-    showError('Não foi possível carregar o índice de meses.');
+    showError(e.message || 'Não foi possível carregar o índice de meses.');
   }
 }
 
@@ -1326,16 +1365,14 @@ async function loadMes(mesId){
     document.getElementById('panel-carteira').classList.add('active');
   }
   try {
-    const r = await fetch(`data/${mesId}.json?v=`+Date.now());
-    if(!r.ok) throw new Error('HTTP '+r.status);
-    D = normalizeD(await r.json());
+    D = normalizeD(await _fetchAutenticado(mesId + '.json'));
     populateAssessoriaSelect();
     populateMotivoSelect();
     renderAll();
     hideLoading();
   } catch(e){
     console.error('Erro ao carregar mês:', e);
-    showError('Não foi possível carregar os dados de '+mesId+'.');
+    showError(e.message || ('Não foi possível carregar os dados de '+mesId+'.'));
   }
 }
 
@@ -1347,9 +1384,7 @@ async function loadAnalitico(){
   const _csLoadEl = document.getElementById('cs-content');
   if(_csLoadEl) _csLoadEl.innerHTML = _loadingHtml;
   try {
-    const r = await fetch(`data/${mesId}-analitico.json?v=`+Date.now());
-    if(!r.ok) throw new Error('HTTP '+r.status);
-    ANALITICO = normalizeAnalitico(await r.json());
+    ANALITICO = normalizeAnalitico(await _fetchAutenticado(mesId + '-analitico.json'));
     anInited = true; anLoading = false;
     renderAnalitico();
     renderPropensao();
@@ -1373,6 +1408,32 @@ function showError(msg){
   document.getElementById('loading-overlay').classList.remove('hidden');
   document.getElementById('loading-overlay').style.background = 'rgba(254,242,242,.95)';
   document.getElementById('loading-txt').style.color = '#DC2626';
+
+  var overlay = document.getElementById('loading-overlay');
+  var btn = document.getElementById('btnTentarOutraConta');
+  if (!btn) {
+    btn = document.createElement('button');
+    btn.id = 'btnTentarOutraConta';
+    btn.style.cssText = 'margin-top:16px;padding:10px 20px;border:1px solid #DC2626;background:#fff;color:#DC2626;border-radius:6px;cursor:pointer;font-size:.9rem;';
+    btn.addEventListener('click', function() {
+      btn.disabled = true;
+      btn.textContent = 'Saindo...';
+      var jaRecarregou = false;
+      function recarregar() {
+        if (jaRecarregou) return;
+        jaRecarregou = true;
+        window.location.reload();
+      }
+      // Se signOut() falhar ou travar, recarrega assim mesmo depois de 3s —
+      // sem isso a pessoa fica presa em silêncio (achado real, ver zon-dashboard-powered).
+      setTimeout(recarregar, 3000);
+      Clerk.signOut().catch(function(err) { console.error('Erro ao sair:', err); }).then(recarregar);
+    });
+    overlay.appendChild(btn);
+  }
+  btn.style.display = '';
+  btn.disabled = false;
+  btn.textContent = 'Tentar com outra conta';
 }
 
 // ═══════════════════════════════════════════
@@ -3154,8 +3215,50 @@ function renderCarteira(){
   renderAllCartDims();
 }
 
-// ══ INIT ══
-loadIndex();
+// ══ LOGIN (Clerk) + INIT ══
+// Ver zon-dashboard-powered/script.js para o histórico dos dois achados abaixo
+// (bundle de UI + corrida no window.load) — mesmo app Clerk, mesmo comportamento.
+async function _clerkLoadComRetry(tentativas, esperaMs) {
+  tentativas = tentativas || 30; esperaMs = esperaMs || 150;
+  for (let i = 0; i < tentativas; i++) {
+    try {
+      await Clerk.load({ ui: { ClerkUI: window.__internal_ClerkUICtor } });
+      return;
+    } catch (e) {
+      if (i === tentativas - 1) throw e;
+      await new Promise(r => setTimeout(r, esperaMs));
+    }
+  }
+}
+
+let _dashboardIniciado = false;
+function _iniciarDashboard() {
+  if (_dashboardIniciado) return;
+  _dashboardIniciado = true;
+  document.getElementById('auth-screen').style.display = 'none';
+  document.getElementById('dashboard-root').style.display = '';
+  loadIndex();
+}
+
+window.addEventListener('load', async function () {
+  try {
+    await _clerkLoadComRetry();
+  } catch (e) {
+    console.error('Clerk falhou ao carregar:', e);
+    document.getElementById('sign-in').innerHTML =
+      '<div style="color:#DC2626;padding:20px;text-align:center;">Erro ao carregar autenticação. Recarregue a página.</div>';
+    return;
+  }
+
+  if (Clerk.isSignedIn) {
+    _iniciarDashboard();
+  } else {
+    Clerk.mountSignIn(document.getElementById('sign-in'));
+    Clerk.addListener(function(payload) {
+      if (payload.user) _iniciarDashboard();
+    });
+  }
+});
 </script>
 </body>
 </html>

@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "acionamentos-zon-auth-check",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": [".claude/serve.py"],
+      "autoPort": true
+    }
+  ]
+}
