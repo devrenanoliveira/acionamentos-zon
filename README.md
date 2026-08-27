@@ -16,6 +16,8 @@ Dashboard de acompanhamento de cobertura de acionamentos da carteira Z-ON Card, 
 | **Analítico** | Tabela individual por cliente, carregada sob demanda, com exportação Excel |
 | **🎯 Collection Score** | Aba de destaque com duas sub-abas — **📋 Lista Priorizada** (modelo estatístico de priorização) e **📊 Esperado x Realizado** (calibração vs. validação por coorte, com toggle Collection Score/Propensão de Pagamento) — ver seção dedicada abaixo |
 
+Todo gráfico do dashboard (15 no total) tem um botão discreto de ampliar (ícone no canto, aparece ao passar o mouse) que abre o gráfico num modal maior, mantendo a mesma interação de tooltip do card original.
+
 ## Estrutura do projeto
 
 ```
