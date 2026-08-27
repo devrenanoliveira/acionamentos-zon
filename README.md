@@ -70,7 +70,7 @@ Os dois CSVs vêm direto da exportação do sistema, com encoding `utf-8-sig`. O
 
 ### Carteira.csv (um cliente por linha)
 
-Colunas usadas: `Código`, `CPF/CNPJ`, `Nome`, `Tipo Pessoa` (F/J), `Agrupador`, `Dias`, `Saldo Atual`, `Saldo em Atraso`, `Saldo Contábil`, `Saldo Total em Atraso`, `Situação`, `UF`, `Cidade`, `Score Fatura`, **`Assessorias`** (plural — sempre presente desde ago/2026, quando a carteira passou a ter mais de uma assessoria).
+Colunas usadas: `Código`, `CPF/CNPJ`, `Nome`, `Tipo Pessoa` (F/J), `Agrupador`, `Dias`, `Saldo Atual`, `Saldo em Atraso`, `Saldo Contábil`, `Saldo Total em Atraso`, `Situação`, `UF`, `Cidade`, `Score Fatura`, **`Assessorias`** (plural — sempre presente desde ago/2026, quando a carteira passou a ter mais de uma assessoria), **`Telefones`** (opcional, a partir de 28/08/2026 — um ou mais números separados por vírgula; ver seção "Telefones" abaixo).
 
 **Regra de saldo composto** (usada em todo o dashboard, inclusive na visão em R$ da aba Carteira): usa `Saldo Contábil` quando > 0; se estiver zerado, cai para `Saldo Total em Atraso` → `Saldo em Atraso` → `Saldo Atual`, nessa ordem.
 
@@ -135,6 +135,12 @@ O segundo modelo (25/08/2026) fecha uma lacuna: antes só o Collection Score tin
 ## Colaboradores (marcação opcional, cruzamento com RH)
 
 Quando uma planilha `.xlsx` com "colaborador" no nome está presente na pasta de trabalho, o dashboard marca quais clientes da carteira também são colaboradores do grupo (Filial/Cargo), disponível como filtro na aba Analítico e como sub-aba própria em Carteira. O cruzamento usa **só o CPF** — salário e data de nascimento da planilha de RH nunca são lidos nem expostos no dashboard (que é público, sem autenticação). Sem a planilha, a marcação fica desativada sem quebrar o resto da geração.
+
+---
+
+## Telefones (opcional, a partir de 28/08/2026)
+
+Quando `Carteira.csv` tem a coluna `Telefones`, cada cliente pode trazer um ou mais números separados por vírgula (`+55 41 995054678` ou `+55 41 998199239,+55 41 997569596`). O script separa em lista (`_telefone`, índice 29 do analítico); o dashboard calcula quantos números tem a linha mais cheia do mês e renderiza esse tanto de colunas **"Telefone 1".."Telefone N"** na tabela do Analítico e no export Excel — nunca um número só, nunca tudo espremido numa coluna. Meses sem a coluna no CSV de origem simplesmente não mostram nenhuma coluna de telefone, sem quebrar o resto da geração (mesmo padrão gracioso da seção Colaboradores acima).
 
 ---
 
