@@ -1899,6 +1899,13 @@ function renderAnalitico(){
   // quando o mês tem pelo menos 1 cliente identificado como colaborador
   // (n_funcionarios vem do JSON mensal; ausente/0 em meses sem a planilha de RH).
   const showColab = (D.n_funcionarios||0) > 0;
+  // Telefone(s) (28/08/2026→): r[29] é uma LISTA (0..N números por cliente,
+  // já que o CSV traz vários separados por vírgula numa única coluna) — vira
+  // uma coluna "Telefone 1".."Telefone N" por vez, N = maior lista do mês,
+  // pra nenhum número ficar escondido. Opcional, mesmo padrão do Colaborador
+  // acima: só aparece em meses cujo Carteira.csv já tinha a coluna.
+  const maxTel = ANALITICO.reduce((m,r)=> r[29] ? Math.max(m, r[29].length) : m, 0);
+  const showTel = maxTel > 0;
 
   const html = `
     <div class="an-filters">
@@ -1936,6 +1943,7 @@ function renderAnalitico(){
           <th>Último Status</th><th>Status + Freq.</th>
           ${AS_LIST.length>1?'<th>Assessoria</th>':''}
           ${showColab?'<th>Colaborador</th><th>Filial</th><th>Cargo</th>':''}
+          ${showTel?Array.from({length:maxTel},(_,i)=>`<th>Telefone ${i+1}</th>`).join(''):''}
         </tr></thead>
         <tbody id="an-tbody"></tbody>
       </table>
@@ -2102,6 +2110,8 @@ function anRender(){
   const CARGO_LIST  = D?D.cargo_list||[]:[];
   const showAs    = AS_LIST.length > 1;
   const showColab = D?(D.n_funcionarios||0) > 0:false;
+  const maxTel = ANALITICO.reduce((m,r)=> r[29] ? Math.max(m, r[29].length) : m, 0);
+  const showTel = maxTel > 0;
   const total=anFiltered.length;
   const pages=Math.max(1,Math.ceil(total/AN_PAGE));
   if(anPage>pages) anPage=pages;
@@ -2131,6 +2141,7 @@ function anRender(){
     <td>${stChip(r[12])}</td>
     ${showAs?`<td class="an-as">${AS_LIST[r[13]]||''}</td>`:''}
     ${showColab?`<td>${r[24]===1?'<span class="chip chip-g">🏢 Sim</span>':''}</td><td>${r[25]>=0?(FILIAL_LIST[r[25]]||''):''}</td><td>${r[26]>=0?(CARGO_LIST[r[26]]||''):''}</td>`:''}
+    ${showTel?Array.from({length:maxTel},(_,i)=>`<td class="an-cid">${(r[29]&&r[29][i])||''}</td>`).join(''):''}
   </tr>`).join('');
   const pg=document.getElementById('an-pagination');
   if(!pg) return;
@@ -2162,9 +2173,12 @@ function anExport(){
   const STATUS_LABEL=D.status_label||{};
   const showAs = AS_LIST.length > 1;
   const showColab = (D.n_funcionarios||0) > 0;
+  const maxTel = ANALITICO.reduce((m,r)=> r[29] ? Math.max(m, r[29].length) : m, 0);
+  const showTel = maxTel > 0;
   const headers=['CPF/CNPJ','Nome','Tipo','Dias Atraso','Faixa Atraso','Saldo (R$)','Faixa Valor','Agrupador','UF','Cidade','Qtd Acionamentos','Qtd Tel','Qtd Digital','Último Status','Status + Frequente','Acordo'];
   if(showAs) headers.push('Assessoria');
   if(showColab) headers.push('Colaborador','Filial','Cargo');
+  if(showTel) for(let i=1;i<=maxTel;i++) headers.push(`Telefone ${i}`);
   const rows=anFiltered.map(r=>{
     const qtdTel = r[15]!==undefined ? r[15] : '';
     const qtdDig = r[15]!==undefined ? r[10]-r[15] : '';
@@ -2172,6 +2186,7 @@ function anExport(){
     const row=[r[0],r[1],r[2]==='J'?'PJ':'PF',r[3],FA_LABELS[r[4]]||r[4],r[5],FV_LABELS[r[6]]||r[6],AG_LIST[r[7]]||'',UF_LIST[r[8]]||'',r[9],r[10],qtdTel,qtdDig,STATUS_LABEL[r[11]]||r[11]||'',STATUS_LABEL[r[12]]||r[12]||'',acordo];
     if(showAs) row.push(AS_LIST[r[13]]||'');
     if(showColab) row.push(r[24]===1?'Sim':'Não', r[25]>=0?(FILIAL_LIST[r[25]]||''):'', r[26]>=0?(CARGO_LIST[r[26]]||''):'');
+    if(showTel) for(let i=0;i<maxTel;i++) row.push((r[29]&&r[29][i])||'');
     return row;
   });
   const wb=XLSX.utils.book_new();

@@ -298,11 +298,14 @@ idade_c   = find_col(cart, ["idade"])
 catprof_c = find_col(cart, ["categoria profissão","categoria profissao","categoria_profissao"])
 renda_c   = find_col(cart, ["renda titular","renda_titular","renda"])
 score_c   = find_col(cart, ["score fatura","score_fatura","score"])
+# Telefones (28/08/2026→): opcional, mesmo padrão de tolerância acima — meses
+# anteriores à coluna existir simplesmente ficam com "_telefone" vazio.
+tel_c     = find_col(cart, ["telefones","telefone","telefone(s)","celular","contato"])
 
 print(f"  CPF:{cpf_c}  Nome:{nome_c}  Tipo:{tipo_c}  Agrupador:{ag_c}")
 print(f"  Dias:{dias_c}  SC:{sc_c}  STA:{sta_c}  SAT:{sat_c}")
 print(f"  UF:{uf_c}  Cidade:{cid_c}  Assessoria(s):{ass_c}  Situação:{sit_c}")
-print(f"  Sexo:{sexo_c}  Idade:{idade_c}  Cat.Profissão:{catprof_c}  Renda:{renda_c}  Score:{score_c}")
+print(f"  Sexo:{sexo_c}  Idade:{idade_c}  Cat.Profissão:{catprof_c}  Renda:{renda_c}  Score:{score_c}  Telefone(s):{tel_c}")
 
 cart["_cpf"]    = cart[cpf_c].astype(str).str.strip() if cpf_c else ""
 cart["_nome"]   = cart[nome_c].astype(str).str.strip() if nome_c else ""
@@ -325,6 +328,12 @@ else:
 cart["_catprof"] = cart[catprof_c].apply(norm_catprof) if catprof_c else "Não Informado"
 cart["_renda"] = cart[renda_c].apply(lambda v: safe_float(v, None) if pd.notna(v) else None) if renda_c else pd.Series([None] * len(cart))
 cart["_score"] = pd.to_numeric(cart[score_c], errors="coerce") if score_c else pd.Series([None] * len(cart))
+def _split_telefones(v):
+    if pd.isna(v):
+        return []
+    return [t.strip() for t in str(v).split(",") if t.strip() and t.strip().lower() != "nan"]
+
+cart["_telefone"] = cart[tel_c].apply(_split_telefones) if tel_c else pd.Series([[] for _ in range(len(cart))])
 
 def get_saldo(row) -> float:
     for col in [sc_c, sta_c, sea_c, sat_c]:
@@ -1410,7 +1419,8 @@ mes_json["esperado_realizado_propensao"] = {
 #   sexo_idx, faixa_etaria_idx, categoria_prof_idx, faixa_renda_idx, score_idx,
 #   collection_score, collection_band,
 #   is_funcionario, filial_idx, cargo_idx,
-#   propensao_score, propensao_band]
+#   propensao_score, propensao_band,
+#   telefones]  # 29: lista de strings (0..N números), [] se não aplicável
 # ================================================================
 print("  Montando analítico...")
 rows = []
@@ -1445,6 +1455,7 @@ for _, r in cart.iterrows():
         int(r["_cargo_idx"]),               # 26 cargo_idx (-1 se não é funcionário)
         round(float(r["_propscore"]), 1),   # 27 propensao_score (probabilidade %, 0-100, novo em 21/08/2026)
         int(r["_propband"]),                # 28 propensao_band (0=A alta ... 3=D baixa, -1=sem histórico)
+        list(r["_telefone"]),                # 29 telefones — lista, novo em 28/08/2026; [] se o CSV daquele mês não tinha a coluna
     ])
 
 print(f"  → {len(rows):,} registros no analítico")
