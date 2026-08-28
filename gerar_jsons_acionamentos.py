@@ -1244,6 +1244,26 @@ else:
 print(f"    propensao_band_history.json existente: {len(erp_hist.get('pendentes', []))} pendente(s), "
       f"{len(erp_hist.get('resolvidos', []))} lote(s) já resolvido(s)")
 
+# Trava (28/08/2026): sem os CSVs de histórico (Recuperação AAAA.csv), TODO
+# cliente cai em _propband=-1 (sem histórico pra escorar) — a linha abaixo
+# limpa os pendentes do mês corrente pra reconstruir do zero, mas com
+# _propband=-1 em todo mundo, ninguém é readicionado (ver loop logo após).
+# Resultado sem essa trava: os pendentes reais do mês são apagados e NÃO
+# reconstruídos, silenciosamente — já aconteceu 2x (24/08 e 28/08/2026,
+# a 2ª vez zerou 33.811 pendentes reais). Só aborta se há algo real em
+# risco: se os pendentes do mês já estão vazios (1ª rodada do mês, ou já
+# tudo maduro/resolvido), limpar-e-não-reconstruir é inofensivo.
+_pendentes_mes_atual_antes = [p for p in erp_hist.get("pendentes", []) if p.get("mes_ref") == MES_ID]
+if not _pag_disponivel and _pendentes_mes_atual_antes:
+    sys.exit(
+        f"❌ propensao_band_history.json tem {len(_pendentes_mes_atual_antes):,} pendente(s) "
+        f"reais do mês {MES_ID}, mas os CSVs de histórico (Recuperação AAAA.csv, um por ano) "
+        f"não estão na pasta nesta rodada — sem eles, TODOS os clientes ficam com _propband=-1 "
+        f"e essa lista seria apagada sem reconstrução. Copie os CSVs de histórico multi-ano "
+        f"(ex.: 'Recuperação 2025.csv', 'Recuperação 2026.csv') pra pasta e rode de novo. "
+        f"Nenhum JSON foi gerado."
+    )
+
 erp_hist["pendentes"] = [p for p in erp_hist.get("pendentes", []) if p.get("mes_ref") != MES_ID]
 for _, _rrp in cart[["_cpf_norm", "_propband"]].iterrows():
     if not _rrp["_cpf_norm"] or _rrp["_propband"] == -1:
