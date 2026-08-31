@@ -418,18 +418,77 @@ cart["_catprof_idx"] = cart["_catprof"].map(catprof_map).fillna(0).astype(int)
 # dashboard. Arquivo é OPCIONAL: se não estiver na pasta, a marcação fica
 # zerada para todo mundo e o resto do script roda normalmente (mesmo padrão
 # de tolerância já usado pro Collection Score sem scikit-learn).
+#
+# Formato "nativo" (31/08/2026→): o CobranSaaS passou a exportar um
+# relatório próprio ("RELATORIO_clientes_sinalizados_colaboradores_*.csv")
+# que já é a carteira inteira com 3 colunas extras (Colaborador Sim/Não,
+# Nome na Base de Colaboradores, Filial do Colaborador) — elimina a
+# cross-reference contra a planilha de RH separada, que vinha sendo a causa
+# real de a marcação zerar (arquivo esquecido/não copiado em 25/08 e
+# 28/08/2026). Combinado com o usuário: fica sempre em COLAB_DIR, local
+# fixo, sem precisar copiar pra pasta do script a cada rodada. Formato
+# antigo (planilha de RH, .xlsx, NUMCPF/NOMFIL/TITRED) continua funcionando
+# como fallback — nem todo export novo necessariamente vem no formato
+# nativo, e não custa manter os dois caminhos.
+#
+# Trade-off aceito: o formato nativo não tem um campo de cargo/título (só
+# nome+filial) — "_cargo" fica vazio pra quem só tem marcação nativa. Não é
+# regressão de dado real, só um campo que esse relatório específico não
+# carrega; se um dia precisar de cargo de novo, a planilha de RH antiga
+# ainda é lida como fallback.
 def norm_cpf(v) -> str:
     s = re.sub(r"\D", "", str(v)) if v is not None else ""
     return s.zfill(11) if s else ""
 
-colab_path = None
-for p in sorted(SCRIPT_DIR.glob("*.xlsx")):
-    if "colaborador" in p.name.lower():
-        colab_path = p
-        break
+COLAB_DIR = Path(r"C:\Users\zon002\Desktop\Documentos\Claude Code\Motor - KPIs, "
+                 r"Carteira e Collection Score\Atualização de dados\Colaboradores")
+
+colab_path, colab_formato = None, None
+if COLAB_DIR.exists():
+    for p in sorted(COLAB_DIR.glob("*.csv")):
+        if "colaborador" in p.name.lower():
+            colab_path, colab_formato = p, "nativo"
+            break
+if not colab_path:
+    for p in sorted(SCRIPT_DIR.glob("*.xlsx")):
+        if "colaborador" in p.name.lower():
+            colab_path, colab_formato = p, "rh"
+            break
 
 colab_map = {}   # cpf_norm -> (filial, cargo)
-if colab_path:
+if colab_path and colab_formato == "nativo":
+    try:
+        with open(colab_path, encoding="utf-8-sig") as f:
+            primeira = f.readline()
+        sep = ";" if primeira.count(";") > primeira.count(",") else ","
+        colab_df = pd.read_csv(colab_path, sep=sep, encoding="utf-8-sig", dtype=str,
+                                low_memory=False)
+        cpf_col    = find_col(colab_df, ["cpf/cnpj", "cpf"])
+        flag_col   = find_col(colab_df, ["colaborador"])
+        filial_col = find_col(colab_df, ["filial do colaborador", "filial"])
+        if not cpf_col or not flag_col:
+            print(f"  ⚠ Colaboradores: {colab_path.name} não tem coluna de CPF/Colaborador "
+                  f"reconhecível ({list(colab_df.columns)}) — marcação de colaborador fica zerada.")
+        else:
+            colab_df["_cpf_norm"] = colab_df[cpf_col].apply(norm_cpf)
+            colab_df = colab_df[
+                (colab_df["_cpf_norm"] != "")
+                & (colab_df[flag_col].astype(str).str.strip().str.lower() == "sim")
+            ].drop_duplicates(subset="_cpf_norm")
+            for _, row in colab_df.iterrows():
+                colab_map[row["_cpf_norm"]] = (
+                    str(row[filial_col]).strip() if filial_col and pd.notna(row[filial_col]) else "",
+                    "",  # formato nativo não traz cargo/título, só nome+filial
+                )
+            idade_dias = (datetime.now() - datetime.fromtimestamp(colab_path.stat().st_mtime)).days
+            aviso_idade = f" ⚠ arquivo de {idade_dias}d atrás, pode não refletir a carteira de hoje" if idade_dias > 3 else ""
+            print(f"  Colaboradores (nativo): {colab_path.name} — {len(colab_map):,} CPFs "
+                  f"marcados 'Sim' carregados (Filial:{filial_col}){aviso_idade}")
+    except Exception as e:
+        print(f"  ⚠ Falha ao ler relatório nativo de colaboradores ({colab_path.name}): {e} "
+              f"— marcação de colaborador fica zerada.")
+        colab_map = {}
+elif colab_path and colab_formato == "rh":
     try:
         colab_df = pd.read_excel(colab_path, engine="openpyxl")
         cpf_col    = find_col(colab_df, ["numcpf", "cpf", "cpf/cnpj"])
@@ -446,16 +505,16 @@ if colab_path:
                     str(row[filial_col]).strip() if filial_col and pd.notna(row[filial_col]) else "",
                     str(row[cargo_col]).strip()  if cargo_col  and pd.notna(row[cargo_col])  else "",
                 )
-            print(f"  Colaboradores: {colab_path.name} — {len(colab_map):,} CPFs distintos carregados "
-                  f"(Filial:{filial_col}  Cargo:{cargo_col})")
+            print(f"  Colaboradores (planilha RH): {colab_path.name} — {len(colab_map):,} CPFs distintos "
+                  f"carregados (Filial:{filial_col}  Cargo:{cargo_col})")
     except Exception as e:
         print(f"  ⚠ Falha ao ler planilha de colaboradores ({colab_path.name}): {e} "
               f"— marcação de colaborador fica zerada.")
         colab_map = {}
 else:
-    print("  (nenhuma planilha de colaboradores — nome do arquivo precisa conter "
-          "\"colaborador\" — encontrada na pasta; marcação de colaborador fica zerada, "
-          "não bloqueia a geração dos outros JSONs)")
+    print(f"  (nenhum relatório de colaboradores encontrado — nem em {COLAB_DIR} "
+          f"[nome contendo \"colaborador\", .csv] nem em {SCRIPT_DIR} [.xlsx]; "
+          f"marcação de colaborador fica zerada, não bloqueia a geração dos outros JSONs)")
 
 cart["_cpf_norm"]       = cart["_cpf"].apply(norm_cpf)
 cart["_is_funcionario"] = cart["_cpf_norm"].map(lambda c: 1 if c in colab_map else 0)
