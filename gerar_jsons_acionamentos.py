@@ -24,9 +24,9 @@ import pandas as pd
 # ================================================================
 #  CONFIGURAÇÃO — ajuste antes de rodar a cada mês
 # ================================================================
-MES_ID      = "2026-08"
-MES_LABEL   = "Agosto 2026"
-MES_PERIODO = "01–31 ago/2026"
+MES_ID      = "2026-09"
+MES_LABEL   = "Setembro 2026"
+MES_PERIODO = "01–30 set/2026"
 # ================================================================
 
 SCRIPT_DIR = Path(__file__).parent
@@ -1584,6 +1584,12 @@ idx_data["meses"].insert(0, {
     "cobertura_pct": round(bloco_global["acionados"] / bloco_global["total_clientes"] * 100, 1)
                      if bloco_global["total_clientes"] else 0,
 })
+
+# O mês novo é inserido no topo (insert(0)), então a lista sai fora de ordem
+# assim que existe mais de um: em 02/09/2026 o índice ficou 09, 07, 08 e o
+# seletor de período do dashboard herdava essa ordem. Ordena por id, que é
+# "AAAA-MM" e portanto ordenável como texto.
+idx_data["meses"].sort(key=lambda m: m.get("id", ""))
 
 
 # ================================================================
