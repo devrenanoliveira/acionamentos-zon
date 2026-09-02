@@ -75,6 +75,12 @@ Este ciclo pode se repetir **mais de uma vez no mesmo mês** (ex: reexportar a c
 > ⚠️ **Nome do arquivo HTML:** sempre `index.html` (nunca `index_acionamentos.html`) — é o nome que o GitHub Pages espera servir na raiz do repositório.
 >
 > ⚠️ **Antes de rodar `gerar_jsons_acionamentos.py`**, sempre baixar o `index.json`, o `collection_band_history.json` **e** o `propensao_band_history.json` atuais do GitHub para a pasta de trabalho — sem eles, o histórico de meses e as coortes de Collection Score/Propensão pendentes de maturação são perdidos.
+>
+> 🔴 **Na primeira rodada de cada mês, trocar `MES_ID` / `MES_LABEL` / `MES_PERIODO`** no topo do script. Diferente do motor (Projeto #12), que vira o mês sozinho, aqui a config é manual de propósito. Uma **trava** (commit `972c4ef`) compara o mês predominante do Acionamentos.csv com `MES_ID` e aborta com exit 1 antes de gerar qualquer JSON se divergirem — ela impede o estrago, mas não troca a constante por você. Sem essa trava, rodar setembro com `MES_ID` em agosto sobrescreveria `2026-08.json` e o mês fechado se perderia.
+>
+> 📈 **Copiar também o `carteira_serie.json`** que o motor gera em `saida/` — alimenta a sub-aba "Carteira por DU" (ver seção própria abaixo). É o único arquivo deste dashboard que não sai do `gerar_jsons_acionamentos.py`.
+
+> ℹ️ **Se um mês sumir do seletor de período**, checar primeiro se o `data/YYYY-MM.json` dele ainda existe antes de assumir perda de dado. Julho sumiu assim em ago/2026: o arquivo continuava publicado e acessível (HTTP 200), mas fora do `index.json` — foi rodar o script sem o índice publicado na pasta. Reposto em `972c4ef`. Desde `a26e5c6` o script ordena o índice por mês, e desde `a146ab1` o dashboard decide sozinho qual mês abre (o mais recente), sem depender da ordem em que o arquivo foi gravado.
 
 ---
 
