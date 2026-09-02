@@ -563,6 +563,29 @@ if data_a:
 else:
     acion["_data"] = pd.NaT
 
+# ── Trava de mês (01/09/2026) ────────────────────────────────────────
+# MES_ID/MES_LABEL/MES_PERIODO são constantes editadas à mão no topo deste
+# arquivo. Esquecer de trocá-las na virada faz o mês novo ser gravado com o
+# nome do mês anterior — `2026-08.json` sobrescrito com dados de setembro,
+# o mês fechado perdido e o filtro de mês do dashboard continuando com uma
+# opção só. Não dá erro nenhum sozinho.
+# Mesma classe de bug que derrubou o motor na virada de agosto→setembro
+# (aplicar() gravou setembro dentro da linha de agosto); lá a correção foi
+# automática, aqui a config é manual de propósito, então a trava aborta e
+# manda trocar.
+if acion["_data"].notna().any():
+    _mes_dado = acion["_data"].dt.to_period("M").mode()
+    if len(_mes_dado):
+        _mes_dado = str(_mes_dado.iloc[0])
+        if _mes_dado != MES_ID:
+            print(f"\nERRO: o Acionamentos.csv é predominantemente de {_mes_dado}, "
+                  f"mas MES_ID está em '{MES_ID}'.")
+            print(f"  Rodar assim gravaria {_mes_dado} dentro de {MES_ID}.json, "
+                  f"perdendo o mês fechado.")
+            print(f"  Ajuste MES_ID/MES_LABEL/MES_PERIODO no topo do script "
+                  f"(linhas ~28-30) e rode de novo. Nenhum JSON foi gerado.")
+            sys.exit(1)
+
 # Classificar canal (telefônico = contato telefônico; demais = digital/WhatsApp)
 acion["_is_tel"] = acion["_acao"].str.contains(r"TEL|CONTATO", na=False, regex=True)
 
