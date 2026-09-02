@@ -552,7 +552,9 @@ body.dark .colab-tab-banner{background:rgba(217,119,6,.1)}
 <div id="panel-carteira" class="panel active">
   <div class="sub-tabs" style="justify-content:space-between;align-items:center">
     <div style="display:flex;gap:6px;flex-wrap:wrap">
-      <button class="sub-btn active" onclick="showCarteiraSub('atraso',this)">Faixas de Atraso</button>
+      <button class="sub-btn active" onclick="showCarteiraSub('evolucao',this)">📈 Carteira por DU</button>
+      <span style="width:1px;background:var(--border);align-self:stretch;margin:2px 2px"></span>
+      <button class="sub-btn" onclick="showCarteiraSub('atraso',this)">Faixas de Atraso</button>
       <button class="sub-btn" onclick="showCarteiraSub('valor',this)">Faixas de Valor</button>
       <button class="sub-btn" onclick="showCarteiraSub('segmento',this)">Segmentos</button>
       <span style="width:1px;background:var(--border);align-self:stretch;margin:2px 2px"></span>
@@ -572,7 +574,26 @@ body.dark .colab-tab-banner{background:rgba(217,119,6,.1)}
   <div class="filter-notice" id="fn-c-dims" style="display:none">ℹ Filtro de Tipo de Ação/Canal-Motivo ativo — as novas visões (Gênero, Faixa Etária, Categoria Profissão, Faixa de Renda, Score Fatura, Carteira Interna, Colaboradores) recalculam a partir dos dados individuais; Faixas de Atraso/Valor/Segmentos continuam mostrando os totais consolidados (não filtrados por tipo/motivo).</div>
 
   <!-- Sub: Faixas de Atraso -->
-  <div id="csub-atraso" class="sub-panel active">
+  <!-- ── Carteira por DU (02/09/2026) ──────────────────────────────
+       Série diária da Carteira Acumulada, vinda de data/carteira_serie.json
+       (agregado, sem CPF, exportado pelo motor — é a única coisa que o motor
+       manda pra este projeto). O acumulado reseta todo dia 1º: só muda por
+       dívida nova entrando numa faixa ou por contrato migrando de faixa ao
+       envelhecer. Pagamento e acordo NÃO tiram valor — por isso a distância
+       entre esta curva e a carteira do dia é, na prática, a recuperação. -->
+  <div id="csub-evolucao" class="sub-panel active">
+    <div class="kpi-grid" id="kpi-c-evol"></div>
+    <div class="filter-row" id="c-evol-filtros" style="margin:12px 0; display:flex; gap:8px; flex-wrap:wrap; align-items:center"></div>
+    <div class="chart-wrap" style="height:340px">
+      <canvas id="chart-c-evol"></canvas>
+      <button class="chart-expand-btn" onclick="expandChart('chart-c-evol')" title="Ampliar gráfico"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3M3 16v3a2 2 0 0 0 2 2h3m11-5v3a2 2 0 0 1-2 2h-3"/></svg></button>
+    </div>
+    <div class="sec-label" style="margin-top:16px">Detalhe por DU</div>
+    <div id="c-evol-table"></div>
+    <p id="c-evol-nota" style="margin-top:12px;font-size:12px;color:var(--ink3);line-height:1.6"></p>
+  </div>
+
+  <div id="csub-atraso" class="sub-panel">
     <div class="kpi-grid" id="kpi-c-atraso"></div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;align-items:start" id="c-atraso-layout">
       <div>
@@ -1341,13 +1362,21 @@ async function loadIndex(){
     const idx = await r.json();
     const sel = document.getElementById('mes-select');
     sel.innerHTML = '';
-    idx.meses.forEach(m=>{
+    // Mais recente primeiro, e é ele que abre por padrão. Antes o dashboard
+    // dependia do índice vir na ordem certa: o gerador inseria o mês novo no
+    // topo com insert(0) e `meses[0]` calhava de ser o mais recente — mas o
+    // índice saía fora de ordem no seletor (02/09/2026: 09, 07, 08). Ao
+    // ordenar o índice no gerador, `meses[0]` virou o mês MAIS ANTIGO e o
+    // dashboard passou a abrir em julho. Agora a ordem é decidida aqui, e
+    // não depende de como o arquivo foi gravado.
+    const meses = [...idx.meses].sort((a,b) => (b.id||'').localeCompare(a.id||''));
+    meses.forEach(m=>{
       const opt = document.createElement('option');
       opt.value = m.id;
       opt.textContent = m.label;
       sel.appendChild(opt);
     });
-    await loadMes(idx.meses[0].id);
+    await loadMes(meses[0].id);
   } catch(e) {
     console.error('Erro ao carregar índice:', e);
     showError('Não foi possível carregar o índice de meses.');
@@ -1385,6 +1414,10 @@ async function loadMes(mesId){
     populateAssessoriaSelect();
     populateMotivoSelect();
     renderAll();
+    // Série da carteira acumulada — arquivo próprio, independente do mês
+    // selecionado (ela traz todos os meses). Falha nela não derruba a aba:
+    // loadCarteiraSerie() trata o erro e mostra o aviso na sub-aba.
+    loadCarteiraSerie();
     hideLoading();
   } catch(e){
     console.error('Erro ao carregar mês:', e);
@@ -2789,6 +2822,123 @@ const SEG_DEFS = [
 ];
 let cChartAtraso=null, cChartValor=null, cChartSeg=null;
 let carteiraViewMode = 'qtd'; // 'qtd' | 'valor'
+
+// ═══════════════════════════════════════════
+// CARTEIRA POR DU — Carteira Acumulada (02/09/2026)
+// Lê data/carteira_serie.json, gerado pelo motor (projeto #12). É o único
+// arquivo que vem de lá; o resto deste dashboard continua 100% do
+// gerar_jsons_acionamentos.py. Sem o arquivo, a sub-aba mostra um aviso e
+// nada mais quebra.
+// ═══════════════════════════════════════════
+let SERIE_CART = null, _evolMes = null, _evolFaixa = null, _evolChart = null;
+
+async function loadCarteiraSerie(){
+  try {
+    const r = await fetch('data/carteira_serie.json?v='+Date.now());
+    if(!r.ok) throw new Error('HTTP '+r.status);
+    SERIE_CART = await r.json();
+  } catch(e){
+    console.warn('carteira_serie.json indisponível:', e.message);
+    SERIE_CART = null;
+  }
+  renderCarteiraEvolucao();
+}
+
+function setEvolMes(m){ _evolMes = m; renderCarteiraEvolucao(); }
+function setEvolFaixa(f){ _evolFaixa = f; renderCarteiraEvolucao(); }
+
+function renderCarteiraEvolucao(){
+  const wrapNota = document.getElementById('c-evol-nota');
+  const elFiltros = document.getElementById('c-evol-filtros');
+  const elTabela = document.getElementById('c-evol-table');
+  const elKpis = document.getElementById('kpi-c-evol');
+  if(!wrapNota) return;
+
+  if(!SERIE_CART || !SERIE_CART.meses || !Object.keys(SERIE_CART.meses).length){
+    elFiltros.innerHTML = ''; elTabela.innerHTML = ''; elKpis.innerHTML = '';
+    wrapNota.innerHTML = '⚠️ Série da carteira acumulada ainda não publicada '
+      + '(<code>data/carteira_serie.json</code>). Ela é gerada pelo motor a cada rodada.';
+    return;
+  }
+
+  const mesesDisp = Object.keys(SERIE_CART.meses);
+  if(!_evolMes || !SERIE_CART.meses[_evolMes]) _evolMes = mesesDisp[mesesDisp.length-1];
+  const bloco = SERIE_CART.meses[_evolMes];
+  const pts = bloco.pontos.filter(p => p.du != null);
+  const labels = SERIE_CART.faixasLabel || SERIE_CART.faixas;
+
+  // filtros: mês + faixa (Geral = total)
+  elFiltros.innerHTML =
+      '<span style="font-size:.8rem;color:var(--ink3)">Mês:</span>'
+    + mesesDisp.map(m => `<button class="sub-btn ${m===_evolMes?'active':''}" onclick="setEvolMes('${m}')">${m}</button>`).join('')
+    + '<span style="width:1px;background:var(--border);align-self:stretch;margin:0 6px"></span>'
+    + '<span style="font-size:.8rem;color:var(--ink3)">Faixa:</span>'
+    + `<button class="sub-btn ${_evolFaixa==null?'active':''}" onclick="setEvolFaixa(null)">Geral</button>`
+    + SERIE_CART.faixas.map((f,i) => `<button class="sub-btn ${_evolFaixa===i?'active':''}" onclick="setEvolFaixa(${i})" title="${labels[i]}">${f}</button>`).join('');
+
+  const valor = p => _evolFaixa==null ? p.total : p.faixas[_evolFaixa];
+  const semente = _evolFaixa==null
+    ? (bloco.sementeValores||[]).reduce((s,v)=>s+v,0)
+    : (bloco.sementeValores||[])[_evolFaixa];
+  const ultimo = pts.length ? valor(pts[pts.length-1]) : null;
+  const delta = (ultimo!=null && semente!=null) ? ultimo - semente : null;
+
+  elKpis.innerHTML = `
+    <div class="kpi"><div class="kpi-label">Semente (${bloco.semente.split('-').reverse().join('/')})</div>
+      <div class="kpi-val">${semente!=null?fmtR$(semente):'—'}</div>
+      <div class="kpi-sub">${_evolFaixa==null?'Carteira B–J no 1º dia':labels[_evolFaixa]}</div></div>
+    <div class="kpi"><div class="kpi-label">Acumulado atual</div>
+      <div class="kpi-val">${ultimo!=null?fmtR$(ultimo):'—'}</div>
+      <div class="kpi-sub">${pts.length} DU(s) apurado(s)</div></div>
+    <div class="kpi"><div class="kpi-label">Variação no mês</div>
+      <div class="kpi-val" style="color:${delta==null?'inherit':(delta>=0?'var(--green)':'var(--red)')}">${delta!=null?(delta>=0?'+':'')+fmtR$(delta):'—'}</div>
+      <div class="kpi-sub">${_evolFaixa==null?'só entra dívida nova':'entradas + migrações'}</div></div>
+    <div class="kpi"><div class="kpi-label">Entradas novas no mês</div>
+      <div class="kpi-val">${pts.length?fmtR$(pts[pts.length-1].novasEntradasMes):'—'}</div>
+      <div class="kpi-sub">dívida que não existia no dia 1º</div></div>`;
+
+  // gráfico
+  if(_evolChart){ _evolChart.destroy(); _evolChart = null; }
+  const ctx = document.getElementById('chart-c-evol');
+  if(ctx && pts.length){
+    _evolChart = new Chart(ctx.getContext('2d'), {
+      type:'line',
+      data:{
+        labels: pts.map(p=>'DU '+p.du),
+        datasets:[
+          { label: _evolFaixa==null?'Carteira acumulada':labels[_evolFaixa],
+            data: pts.map(valor), borderColor:'#1a3680', backgroundColor:'rgba(26,54,128,.08)',
+            fill:true, tension:.25, pointRadius:4, borderWidth:2 },
+          { label:'Semente (1º dia)', data: pts.map(()=>semente),
+            borderColor:'#F59E0B', borderDash:[5,4], pointRadius:0, borderWidth:1.5, fill:false },
+        ]
+      },
+      options:{ responsive:true, maintainAspectRatio:false,
+        plugins:{ legend:{position:'bottom'},
+          tooltip:{ callbacks:{ label: c => c.dataset.label+': '+fmtR$(c.parsed.y) } } },
+        scales:{ y:{ ticks:{ callback: v => fmtR$(v) } } } }
+    });
+  }
+
+  // tabela por DU, com o delta dia a dia
+  let linhas = '';
+  pts.forEach((p,i) => {
+    const v = valor(p), ant = i? valor(pts[i-1]) : semente;
+    const d = (v!=null && ant!=null) ? v-ant : null;
+    linhas += `<tr><td>DU ${p.du}</td><td>${p.data.split('-').reverse().join('/')}</td>`
+      + `<td style="text-align:right">${fmtR$(v)}</td>`
+      + `<td style="text-align:right;color:${d==null?'inherit':(d>0?'var(--green)':d<0?'var(--red)':'var(--ink3)')}">`
+      + `${d==null?'—':(d>0?'+':'')+fmtR$(d)}</td></tr>`;
+  });
+  elTabela.innerHTML = `<table class="an-table"><thead><tr><th>DU</th><th>Data</th>`
+    + `<th style="text-align:right">Acumulado</th><th style="text-align:right">Δ vs. anterior</th>`
+    + `</tr></thead><tbody>${linhas}</tbody></table>`;
+
+  wrapNota.innerHTML = 'A carteira acumulada soma tudo que passou por cada faixa desde o dia 1º do mês. '
+    + 'Ela <strong>reseta todo dia 1º</strong> e só muda por dívida nova entrando numa faixa ou por contrato '
+    + 'migrando de faixa ao envelhecer — <strong>pagamento e acordo não reduzem</strong> o acumulado. '
+    + `Série gerada pelo motor; atualizada em ${(SERIE_CART.atualizadoEm||'').split('-').reverse().join('/')}.`;
+}
 
 function showCarteiraSub(id, btn){
   document.querySelectorAll('#panel-carteira .sub-panel').forEach(p=>p.classList.remove('active'));

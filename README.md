@@ -8,7 +8,7 @@ Dashboard de acompanhamento de cobertura de acionamentos da carteira Z-ON Card, 
 
 | Aba | Conteúdo |
 |---|---|
-| **Carteira** (padrão) | Composição da carteira em 10 sub-abas: Faixas de Atraso, Faixas de Valor, Segmentos, Gênero, Faixa Etária, Categoria Profissão, Faixa de Renda, Score Fatura, Carteira Interna e 🏢 Colaboradores — todas com composição + cobertura de acionamento e toggle 🔢 Quantidade / 💰 Valor (R$) |
+| **Carteira** (padrão) | Abre em **📈 Carteira por DU** (ver abaixo). Composição da carteira em mais 10 sub-abas: Faixas de Atraso, Faixas de Valor, Segmentos, Gênero, Faixa Etária, Categoria Profissão, Faixa de Renda, Score Fatura, Carteira Interna e 🏢 Colaboradores — todas com composição + cobertura de acionamento e toggle 🔢 Quantidade / 💰 Valor (R$) |
 | **Visão Geral** | KPIs gerais, cobertura (donut), frequência de acionamentos, motivos telefônicos |
 | **Por Atraso** / **Por Valor** | Cobertura e breakdown por faixa, com drill cruzado entre as duas |
 | **Matriz** | Cruzamento atraso × valor (não acionados / acionados / % cobertura), com cards de resumo e insight automático apontando o cruzamento prioritário |
@@ -17,6 +17,18 @@ Dashboard de acompanhamento de cobertura de acionamentos da carteira Z-ON Card, 
 | **🎯 Collection Score** | Aba de destaque com duas sub-abas — **📋 Lista Priorizada** (modelo estatístico de priorização) e **📊 Esperado x Realizado** (calibração vs. validação por coorte, com toggle Collection Score/Propensão de Pagamento) — ver seção dedicada abaixo |
 
 Todo gráfico do dashboard (15 no total) tem um botão discreto de ampliar (ícone no canto, aparece ao passar o mouse) que abre o gráfico num modal maior, mantendo a mesma interação de tooltip do card original.
+
+## 📈 Carteira por DU — a única coisa que vem do Motor (02/09/2026→)
+
+Sub-aba padrão da aba Carteira. Mostra a **Carteira Acumulada** dia a dia: quanto passou por cada faixa desde o dia 1º do mês, com linha, KPIs (semente, acumulado atual, variação, entradas novas) e tabela por DU com o delta diário. Filtros de mês e de faixa (Geral / B–J).
+
+**O conceito** (definido pelo usuário, implementado no motor): o acumulado **reseta todo dia 1º** e só muda por duas coisas — dívida nova entrando numa faixa pela primeira vez no mês, ou contrato migrando de faixa ao envelhecer (transfere o saldo da origem pro destino). **Pagamento e acordo não reduzem o acumulado.** Por isso a distância entre esta curva e a carteira do dia é, na prática, a recuperação do mês. Serve de denominador de eficiência que não estoura 100% quando uma faixa gira rápido.
+
+**De onde vem**: `data/carteira_serie.json`, gerado pelo `motor_zon.py` (Projeto #12) a cada rodada e copiado pra cá junto com os outros JSONs. **É o único arquivo que este projeto recebe do motor** — todo o resto continua saindo do `gerar_jsons_acionamentos.py`, e essa separação segue valendo. O motivo da exceção: a lógica do acumulado é um diff por CPF entre dois dias, que mora no motor; duplicar aqui criaria duas fontes de verdade que divergiriam.
+
+O arquivo é **agregado, sem CPF** — 9 números por dia. O estado bruto do acumulado (`motor_zon/estado/*.json`) tem CPF e nunca sai da máquina do motor.
+
+Sem o arquivo, a sub-aba mostra um aviso e nada mais quebra.
 
 ## Estrutura do projeto
 
