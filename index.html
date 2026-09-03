@@ -448,6 +448,13 @@ body.dark .colab-tab-banner{background:rgba(217,119,6,.1)}
 <!-- ══ GERAL ══ -->
 <div id="panel-geral" class="panel">
   <div class="filter-notice" id="fn-geral" style="display:none">ℹ Filtro de tipo/motivo ativo. Os indicadores nesta aba são totais consolidados. Use a aba <strong>Analítico</strong> para ver registros filtrados individualmente.</div>
+  <!-- Toggle Quantidade/Valor (03/09/2026) — mesmo `geralViewMode` da aba
+       Carteira não serve aqui: lá o toggle é da carteira, aqui é da
+       cobertura. Estado próprio, mesmo visual. -->
+  <div class="cv-toggle" id="gv-toggle" style="margin-bottom:12px">
+    <button id="gv-btn-qtd" class="cv-toggle-btn active" onclick="setGeralViewMode('qtd')">🔢 Quantidade</button>
+    <button id="gv-btn-valor" class="cv-toggle-btn" onclick="setGeralViewMode('valor')">💰 Valor (R$)</button>
+  </div>
   <div class="kpi-grid" id="kpi-geral"></div>
   <div class="two-col">
     <div>
@@ -1499,10 +1506,33 @@ function renderGeral(){
   const ef_acion = ad.acionados     - (acordoEntry ? acordoEntry.acion  : 0);
   const ef_nao   = ad.sem_acionamento - (acordoEntry ? acordoEntry.nao  : 0);
 
+  // Toggle Quantidade/Valor (03/09/2026). Em valor, os saldos vêm de
+  // `saldoAcion`/`saldoNao`, que o gerador passou a produzir por faixa —
+  // sem eles só daria pra mostrar o total, e a divisão acionado × sem
+  // contato, que é o ponto desta aba, ficaria de fora.
+  const gVal = geralViewMode === 'valor';
+  const temSaldoSplit = (ad.atraso||[]).some(r => r.saldoAcion != null);
+  const somaSe = (campo, pred) => (ad.atraso||[]).reduce(
+    (s,r,i) => s + (pred(r,i) ? (r[campo]||0) : 0), 0);
+  const foraDoTotal = r => !(!showAcordos && r.label==='Acordo');
+  const v_total = somaSe('saldo', foraDoTotal);
+  const v_acion = somaSe('saldoAcion', foraDoTotal);
+  const v_nao   = somaSe('saldoNao', foraDoTotal);
+  const M  = gVal ? v => fmtR$(v) : v => fmt(v);
+  const t_ = gVal ? v_total : ef_total;
+  const a_ = gVal ? v_acion : ef_acion;
+  const n_ = gVal ? v_nao   : ef_nao;
+
+  // Botão de valor só aparece se o JSON do mês tiver o split — meses
+  // gerados antes desta mudança não têm, e mostrar zero seria mentira.
+  const gvT = document.getElementById('gv-toggle');
+  if(gvT) gvT.style.display = temSaldoSplit ? '' : 'none';
+  if(!temSaldoSplit && gVal){ geralViewMode = 'qtd'; return renderGeral(); }
+
   document.getElementById('kpi-geral').innerHTML =
-    kpiHtml('Total clientes',fmt(ef_total),'',acordoEntry?`${fmt(acordoEntry.total)} em acordo excluídos`:'') +
-    kpiHtml('Acionados',fmt(ef_acion),'blue',`${(ef_total>0?(ef_acion/ef_total)*100:0).toFixed(1)}% da carteira`) +
-    kpiHtml('Sem acionamento',fmt(ef_nao),'red',`${(ef_total>0?(ef_nao/ef_total)*100:0).toFixed(1)}% da carteira`) +
+    kpiHtml(gVal?'Carteira total':'Total clientes',M(t_),'',acordoEntry?`${gVal?fmtR$(acordoEntry.saldo||0):fmt(acordoEntry.total)} em acordo excluído${gVal?'':'s'}`:'') +
+    kpiHtml('Acionados',M(a_),'blue',`${(t_>0?(a_/t_)*100:0).toFixed(1)}% da carteira`) +
+    kpiHtml('Sem acionamento',M(n_),'red',`${(t_>0?(n_/t_)*100:0).toFixed(1)}% da carteira`) +
     kpiHtml('Com promessa',fmt(ad.com_promessa),'green',`${((ad.com_promessa/Math.max(ef_acion,1))*100).toFixed(1)}% dos acionados`) +
     kpiHtml('Acionamentos',fmt(ad.total_acionamentos),'',D.periodo);
 
@@ -2830,6 +2860,21 @@ const SEG_DEFS = [
 ];
 let cChartAtraso=null, cChartValor=null, cChartSeg=null;
 let carteiraViewMode = 'qtd'; // 'qtd' | 'valor'
+// Estado próprio da Visão Geral (03/09/2026) — não compartilha com o da
+// aba Carteira: lá o toggle é sobre a carteira, aqui sobre a cobertura.
+let geralViewMode = 'qtd';
+function setGeralViewMode(mode){
+  geralViewMode = mode;
+  document.getElementById('gv-btn-qtd').classList.toggle('active', mode==='qtd');
+  document.getElementById('gv-btn-valor').classList.toggle('active', mode==='valor');
+  // Chart.js v4 recusa criar um segundo gráfico no mesmo canvas — destruir
+  // os desta aba antes de re-renderizar. Só os desta aba: destruir todos
+  // deixaria as outras em branco até trocar de aba e voltar.
+  ['donut','freq','motivosDonut'].forEach(k => {
+    if(charts[k]){ charts[k].destroy(); delete charts[k]; }
+  });
+  renderGeral();
+}
 
 // ═══════════════════════════════════════════
 // CARTEIRA POR DU — Carteira Acumulada (02/09/2026)

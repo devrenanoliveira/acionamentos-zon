@@ -644,6 +644,11 @@ def calc_block(df_c: pd.DataFrame, df_a: pd.DataFrame) -> dict:
         ft  = len(fc)
         fn  = int((~fc["_acionado"]).sum())
         fs  = round(float(fc["_saldo"].sum()), 2)
+        # Saldo separado por acionado/não (03/09/2026): a aba Visão Geral
+        # ganhou toggle Quantidade/Valor, e sem isto o lado "Valor" só
+        # conseguiria mostrar o total — a divisão acionado × sem contato,
+        # que é o ponto da aba, ficaria de fora.
+        fsa = round(float(fc.loc[fc["_acionado"].astype(bool), "_saldo"].sum()), 2)
         atraso.append({
             "label": fl,
             "total": ft,                                              # ← "total" (não "tot")
@@ -651,6 +656,8 @@ def calc_block(df_c: pd.DataFrame, df_a: pd.DataFrame) -> dict:
             "nao":   fn,
             "pct":   round((ft - fn) / ft * 100, 1) if ft else 0.0,
             "saldo": fs,
+            "saldoAcion": fsa,
+            "saldoNao": round(fs - fsa, 2),
         })
 
     # ── Valor ────────────────────────────────────────────────────
