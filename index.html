@@ -2874,7 +2874,10 @@ function renderCarteiraEvolucao(){
     + '<span style="width:1px;background:var(--border);align-self:stretch;margin:0 6px"></span>'
     + '<span style="font-size:.8rem;color:var(--ink3)">Faixa:</span>'
     + `<button class="sub-btn ${_evolFaixa==null?'active':''}" onclick="setEvolFaixa(null)">Geral</button>`
-    + SERIE_CART.faixas.map((f,i) => `<button class="sub-btn ${_evolFaixa===i?'active':''}" onclick="setEvolFaixa(${i})" title="${labels[i]}">${f}</button>`).join('');
+    // Botão mostra o intervalo em dias, não a letra da faixa — pedido do
+    // usuário em 03/09/2026 ("ideal sempre é ser em número"). A letra vira
+    // o tooltip, pra quem já conhece a régua B–J das outras abas.
+    + SERIE_CART.faixas.map((f,i) => `<button class="sub-btn ${_evolFaixa===i?'active':''}" onclick="setEvolFaixa(${i})" title="Faixa ${f}">${labels[i]}</button>`).join('');
 
   const valor = p => _evolFaixa==null ? p.total : p.faixas[_evolFaixa];
   const semente = _evolFaixa==null
