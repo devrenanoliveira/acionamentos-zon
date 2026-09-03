@@ -1,3 +1,12 @@
 *.csv
 *.xlsx
 __pycache__/
+
+# Saidas de trabalho do gerar_jsons_acionamentos.py na raiz do repo.
+# A copia publicada e a de data/ — estas ficam aqui porque o script le o
+# estado anterior (indice de meses e coortes pendentes) da propria pasta
+# antes de rodar, e sem elas ele regenera do zero e perde historico.
+/2026-*.json
+/index.json
+/collection_band_history.json
+/propensao_band_history.json
