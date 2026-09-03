@@ -1051,6 +1051,10 @@ function toggleShowAcordos(){
   // travado até o usuário trocar de sub-aba e voltar, porque este toggle
   // não as recalculava — só renderCarteira() e as abas antigas.
   renderAllCartDims();
+  // A Carteira por DU não muda de valor com o toggle (o acumulado nunca
+  // teve acordo dentro), mas a ponte que ela mostra até o Total Carteira
+  // muda de texto — por isso re-renderiza.
+  renderCarteiraEvolucao();
   // Analítico: reaplicar filtro (exclui/inclui acordos conforme showAcordos)
   if(anInited) anFilter();
 }
@@ -1137,6 +1141,10 @@ function onAssessoriaChange(){
   // desatualizado) do select local. Bug reportado em 24/08/2026: header em
   // "Todas" mas a aba Collection Score continuava mostrando só uma assessoria
   // porque o select local (cs-as) nunca era resetado ao voltar pra "Todas".
+  // A Carteira por DU lê `currentAs` direto e não é redesenhada por
+  // renderAll() — sem esta linha, trocar a assessoria no topo não mexia
+  // nela (apontado pelo usuário em 03/09/2026).
+  renderCarteiraEvolucao();
   const anAsEl = document.getElementById('an-as');
   if(anAsEl) anAsEl.value = currentAs !== null ? String(currentAs) : '';
   const csAsEl = document.getElementById('cs-as');
@@ -2848,11 +2856,14 @@ function setEvolMes(m){ _evolMes = m; renderCarteiraEvolucao(); }
 function setEvolFaixa(f){ _evolFaixa = f; renderCarteiraEvolucao(); }
 
 function renderCarteiraEvolucao(){
-  const wrapNota = document.getElementById('c-evol-nota');
   const elFiltros = document.getElementById('c-evol-filtros');
-  const elTabela = document.getElementById('c-evol-table');
-  const elKpis = document.getElementById('kpi-c-evol');
-  if(!wrapNota) return;
+  const elKpis    = document.getElementById('kpi-c-evol');
+  const elTabela  = document.getElementById('c-evol-table');
+  const wrapNota  = document.getElementById('c-evol-nota');
+  // Guarda os QUATRO: agora esta função é chamada pelos toggles globais, que
+  // podem disparar antes desta sub-aba existir no DOM. Antes só `wrapNota`
+  // era checado e os outros três estouravam com "innerHTML of null".
+  if(!wrapNota || !elFiltros || !elKpis || !elTabela) return;
 
   if(!SERIE_CART || !SERIE_CART.meses || !Object.keys(SERIE_CART.meses).length){
     elFiltros.innerHTML = ''; elTabela.innerHTML = ''; elKpis.innerHTML = '';
@@ -2867,7 +2878,53 @@ function renderCarteiraEvolucao(){
   const pts = bloco.pontos.filter(p => p.du != null);
   const labels = SERIE_CART.faixasLabel || SERIE_CART.faixas;
 
-  // filtros: mês + faixa (Geral = total)
+  // Esta visão obedece os filtros GLOBAIS da página (assessoria no topo,
+  // Quantidade/Valor da aba Carteira) em vez de ter os próprios — era o que
+  // o usuário apontou em 03/09/2026: trocar a assessoria não mexia em nada
+  // aqui, e não havia visão de quantidade.
+  const ehQtd = (typeof carteiraViewMode !== 'undefined') && carteiraViewMode === 'qtd';
+  const fmtV  = v => v==null ? '—' : (ehQtd ? Number(v).toLocaleString('pt-BR') : fmtR$(v));
+
+  // O select global guarda o ÍNDICE em D.assessoria_list (nome por extenso);
+  // a série usa os ids do motor (afr/apm/ad). Casa por prefixo do nome
+  // normalizado — mesma régua do id_assessoria() lá.
+  const idDaAssessoria = nome => {
+    const n = (nome||'').toLowerCase();
+    if(n.indexOf('fácil')===0 || n.indexOf('facil')===0) return 'afr';
+    if(n.indexOf('pg')===0) return 'apm';
+    if(n.indexOf('decis')===0) return 'ad';
+    return null;
+  };
+  const assNome = (typeof currentAs !== 'undefined' && currentAs !== null && D && D.assessoria_list)
+    ? D.assessoria_list[currentAs] : null;
+  const assId = assNome ? idDaAssessoria(assNome) : null;
+
+  // Fatia do ponto conforme a assessoria selecionada. Ponto antigo (gravado
+  // antes de 03/09/2026) não tem `porAssessoria`; nesse caso a série some em
+  // vez de mostrar zero, e a nota explica.
+  const fatia = p => assId ? ((p.porAssessoria||{})[assId] || null) : p;
+  const semRecorte = assId && pts.some(p => !p.porAssessoria);
+
+  const valor = p => {
+    const f = fatia(p);
+    if(!f) return null;
+    if(_evolFaixa==null) return ehQtd ? (f.qtdTotal!=null?f.qtdTotal:null) : f.total;
+    return ehQtd ? ((f.qtd||[])[_evolFaixa]) : (f.faixas||[])[_evolFaixa];
+  };
+
+  // A semente só existe agregada e em valor — não há semente por assessoria
+  // nem por quantidade. Some quando não se aplica, em vez de comparar coisas
+  // diferentes.
+  const temSemente = !assId && !ehQtd;
+  const semente = !temSemente ? null : (_evolFaixa==null
+    ? (bloco.sementeValores||[]).reduce((s,v)=>s+v,0)
+    : (bloco.sementeValores||[])[_evolFaixa]);
+
+  const ultimo = pts.length ? valor(pts[pts.length-1]) : null;
+  const primeiro = pts.length ? valor(pts[0]) : null;
+  const baseDelta = semente!=null ? semente : primeiro;
+  const delta = (ultimo!=null && baseDelta!=null) ? ultimo - baseDelta : null;
+
   elFiltros.innerHTML =
       '<span style="font-size:.8rem;color:var(--ink3)">Mês:</span>'
     + mesesDisp.map(m => `<button class="sub-btn ${m===_evolMes?'active':''}" onclick="setEvolMes('${m}')">${m}</button>`).join('')
@@ -2879,68 +2936,88 @@ function renderCarteiraEvolucao(){
     // o tooltip, pra quem já conhece a régua B–J das outras abas.
     + SERIE_CART.faixas.map((f,i) => `<button class="sub-btn ${_evolFaixa===i?'active':''}" onclick="setEvolFaixa(${i})" title="Faixa ${f}">${labels[i]}</button>`).join('');
 
-  const valor = p => _evolFaixa==null ? p.total : p.faixas[_evolFaixa];
-  const semente = _evolFaixa==null
-    ? (bloco.sementeValores||[]).reduce((s,v)=>s+v,0)
-    : (bloco.sementeValores||[])[_evolFaixa];
-  const ultimo = pts.length ? valor(pts[pts.length-1]) : null;
-  const delta = (ultimo!=null && semente!=null) ? ultimo - semente : null;
-
+  const rotFaixa = _evolFaixa==null ? (ehQtd?'clientes na carteira B–J':'Carteira B–J') : labels[_evolFaixa];
   elKpis.innerHTML = `
-    <div class="kpi"><div class="kpi-label">Semente (${bloco.semente.split('-').reverse().join('/')})</div>
-      <div class="kpi-val">${semente!=null?fmtR$(semente):'—'}</div>
-      <div class="kpi-sub">${_evolFaixa==null?'Carteira B–J no 1º dia':labels[_evolFaixa]}</div></div>
+    <div class="kpi"><div class="kpi-label">${temSemente?`Semente (${bloco.semente.split('-').reverse().join('/')})`:'1º DU apurado'}</div>
+      <div class="kpi-val">${fmtV(baseDelta)}</div>
+      <div class="kpi-sub">${temSemente?rotFaixa+' no 1º dia':'sem semente para este recorte'}</div></div>
     <div class="kpi"><div class="kpi-label">Acumulado atual</div>
-      <div class="kpi-val">${ultimo!=null?fmtR$(ultimo):'—'}</div>
-      <div class="kpi-sub">${pts.length} DU(s) apurado(s)</div></div>
+      <div class="kpi-val">${fmtV(ultimo)}</div>
+      <div class="kpi-sub">${pts.length} DU(s) apurado(s)${assNome?' · '+assNome:''}</div></div>
     <div class="kpi"><div class="kpi-label">Variação no mês</div>
-      <div class="kpi-val" style="color:${delta==null?'inherit':(delta>=0?'var(--green)':'var(--red)')}">${delta!=null?(delta>=0?'+':'')+fmtR$(delta):'—'}</div>
+      <div class="kpi-val" style="color:${delta==null?'inherit':(delta>=0?'var(--green)':'var(--red)')}">${delta==null?'—':(delta>=0?'+':'')+fmtV(delta)}</div>
       <div class="kpi-sub">${_evolFaixa==null?'só entra dívida nova':'entradas + migrações'}</div></div>
     <div class="kpi"><div class="kpi-label">Entradas novas no mês</div>
-      <div class="kpi-val">${pts.length?fmtR$(pts[pts.length-1].novasEntradasMes):'—'}</div>
-      <div class="kpi-sub">dívida que não existia no dia 1º</div></div>`;
+      <div class="kpi-val">${(!assId && !ehQtd && pts.length)?fmtR$(pts[pts.length-1].novasEntradasMes):'—'}</div>
+      <div class="kpi-sub">${(assId||ehQtd)?'só no agregado, em R$':'dívida que não existia no dia 1º'}</div></div>`;
 
-  // gráfico
   if(_evolChart){ _evolChart.destroy(); _evolChart = null; }
   const ctx = document.getElementById('chart-c-evol');
   if(ctx && pts.length){
+    const ds = [{ label: (_evolFaixa==null?'Carteira acumulada':labels[_evolFaixa]) + (assNome?' — '+assNome:''),
+        data: pts.map(valor), borderColor:'#1a3680', backgroundColor:'rgba(26,54,128,.08)',
+        fill:true, tension:.25, pointRadius:4, borderWidth:2 }];
+    if(semente!=null) ds.push({ label:'Semente (1º dia)', data: pts.map(()=>semente),
+        borderColor:'#F59E0B', borderDash:[5,4], pointRadius:0, borderWidth:1.5, fill:false });
     _evolChart = new Chart(ctx.getContext('2d'), {
-      type:'line',
-      data:{
-        labels: pts.map(p=>'DU '+p.du),
-        datasets:[
-          { label: _evolFaixa==null?'Carteira acumulada':labels[_evolFaixa],
-            data: pts.map(valor), borderColor:'#1a3680', backgroundColor:'rgba(26,54,128,.08)',
-            fill:true, tension:.25, pointRadius:4, borderWidth:2 },
-          { label:'Semente (1º dia)', data: pts.map(()=>semente),
-            borderColor:'#F59E0B', borderDash:[5,4], pointRadius:0, borderWidth:1.5, fill:false },
-        ]
-      },
+      type:'line', data:{ labels: pts.map(p=>'DU '+p.du), datasets: ds },
       options:{ responsive:true, maintainAspectRatio:false,
         plugins:{ legend:{position:'bottom'},
-          tooltip:{ callbacks:{ label: c => c.dataset.label+': '+fmtR$(c.parsed.y) } } },
-        scales:{ y:{ ticks:{ callback: v => fmtR$(v) } } } }
+          tooltip:{ callbacks:{ label: c => c.dataset.label+': '+fmtV(c.parsed.y) } } },
+        scales:{ y:{ ticks:{ callback: v => fmtV(v) } } } }
     });
   }
 
-  // tabela por DU, com o delta dia a dia
   let linhas = '';
   pts.forEach((p,i) => {
-    const v = valor(p), ant = i? valor(pts[i-1]) : semente;
+    const v = valor(p), ant = i? valor(pts[i-1]) : baseDelta;
     const d = (v!=null && ant!=null) ? v-ant : null;
     linhas += `<tr><td>DU ${p.du}</td><td>${p.data.split('-').reverse().join('/')}</td>`
-      + `<td style="text-align:right">${fmtR$(v)}</td>`
+      + `<td style="text-align:right">${fmtV(v)}</td>`
       + `<td style="text-align:right;color:${d==null?'inherit':(d>0?'var(--green)':d<0?'var(--red)':'var(--ink3)')}">`
-      + `${d==null?'—':(d>0?'+':'')+fmtR$(d)}</td></tr>`;
+      + `${d==null?'—':(d>0?'+':'')+fmtV(d)}</td></tr>`;
   });
   elTabela.innerHTML = `<table class="an-table"><thead><tr><th>DU</th><th>Data</th>`
     + `<th style="text-align:right">Acumulado</th><th style="text-align:right">Δ vs. anterior</th>`
     + `</tr></thead><tbody>${linhas}</tbody></table>`;
 
+  // Ponte até o total da carteira que as outras sub-abas mostram. Sem isto,
+  // ver 108 MM numa aba e 104 MM aqui parece erro — e a pergunta voltou.
+  let ponte = '';
+  const ptUlt = pts.length ? pts[pts.length-1] : null;
+  if(ptUlt && !assId && !ehQtd && typeof D !== 'undefined' && D && D.atraso){
+    const iAc = D.fa_acordo_idx, iSa = D.fa_sem_atraso_idx;
+    const soma = (arr,pred) => arr.reduce((s,r,i)=> s + (pred(i) ? (r.saldo||0) : 0), 0);
+    const totalTudo = soma(D.atraso, ()=>true);
+    const acordo    = (D.atraso[iAc]||{}).saldo || 0;
+    const bj        = soma(D.atraso, i => i!==iAc && i!==iSa);
+    const acum      = ptUlt.total;
+    const li = (t,v,cor) => `<tr><td style="padding:2px 0">${t}</td>`
+      + `<td style="text-align:right;padding:2px 0 2px 18px;${cor||''}">${fmtR$(v)}</td></tr>`;
+    ponte = '<div style="margin-top:14px;padding:12px 14px;background:var(--bg2,rgba(0,0,0,.03));border-radius:8px">'
+      + '<div style="font-weight:600;margin-bottom:6px">Por que este número difere do Total Carteira</div>'
+      + '<table style="font-size:.86rem;border-collapse:collapse">'
+      + li('Total da carteira hoje (com acordo)', totalTudo)
+      + li(showAcordos ? '− Acordo (não entra no acumulado)' : '− Acordo (já fora, toggle desligado)', -acordo, 'color:var(--red)')
+      + li('= B–J no retrato de hoje', bj)
+      + li('+ saiu no mês, mas permanece no acumulado', acum - bj, 'color:var(--green)')
+      + `<tr><td style="padding:4px 0;border-top:1px solid var(--border);font-weight:700">= Carteira acumulada (DU ${ptUlt.du})</td>`
+      + `<td style="text-align:right;padding:4px 0 4px 18px;border-top:1px solid var(--border);font-weight:700">${fmtR$(acum)}</td></tr>`
+      + '</table></div>';
+  }
+
+  const notaAss = semRecorte
+    ? '<br>⚠️ <strong>Alguns DUs deste mês não têm recorte por assessoria</strong> — o campo passou a ser '
+      + 'gravado em 03/09/2026 e os dias anteriores foram preenchidos a partir da carteira de cada dia. '
+      + 'Onde não houve como preencher, o ponto não aparece nesta série filtrada.'
+    : (assId ? '<br>Filtrado por <strong>'+assNome+'</strong>. As assessorias não somam o total: '
+      + 'CPF que sai da carteira segue no acumulado, mas deixa de ter dono conhecido.' : '');
+
   wrapNota.innerHTML = 'A carteira acumulada soma tudo que passou por cada faixa desde o dia 1º do mês. '
     + 'Ela <strong>reseta todo dia 1º</strong> e só muda por dívida nova entrando numa faixa ou por contrato '
     + 'migrando de faixa ao envelhecer — <strong>pagamento e acordo não reduzem</strong> o acumulado. '
-    + `Série gerada pelo motor; atualizada em ${(SERIE_CART.atualizadoEm||'').split('-').reverse().join('/')}.`;
+    + `Série gerada pelo motor; atualizada em ${(SERIE_CART.atualizadoEm||'').split('-').reverse().join('/')}.`
+    + notaAss + ponte;
 }
 
 function showCarteiraSub(id, btn){
@@ -2958,6 +3035,9 @@ function setCarteiraViewMode(mode){
   document.getElementById('cv-btn-qtd').classList.toggle('active', mode==='qtd');
   document.getElementById('cv-btn-valor').classList.toggle('active', mode==='valor');
   renderCarteira();
+  // A Carteira por DU também segue o toggle desde 03/09/2026 — sem esta
+  // linha ela ficava na métrica anterior até trocar de sub-aba.
+  renderCarteiraEvolucao();
 }
 
 // ═══════════════════════════════════════════
