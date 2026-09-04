@@ -3001,12 +3001,17 @@ function renderCarteiraEvolucao(){
   if(ctx && pts.length){
     const ds = [{ label: (_evolFaixa==null?'Carteira acumulada':labels[_evolFaixa]) + (assNome?' — '+assNome:''),
         data: pts.map(valor), borderColor:'#1a3680', backgroundColor:'rgba(26,54,128,.08)',
-        fill:true, tension:.25, pointRadius:4, borderWidth:2 }];
+        fill:true, tension:.25, pointRadius:4, pointHoverRadius:7, borderWidth:2 }];
     if(semente!=null) ds.push({ label:'Semente (1º dia)', data: pts.map(()=>semente),
         borderColor:'#F59E0B', borderDash:[5,4], pointRadius:0, borderWidth:1.5, fill:false });
     _evolChart = new Chart(ctx.getContext('2d'), {
       type:'line', data:{ labels: pts.map(p=>'DU '+p.du), datasets: ds },
       options:{ responsive:true, maintainAspectRatio:false,
+        // Sem isto o Chart.js usa o padrão (nearest + intersect:true) e só abre o
+        // tooltip com o cursor em cima do ponto de 4px. Como a linha do acumulado
+        // costuma ser quase reta, o alvo virava um pixel. Com mode:'index' basta
+        // estar na vertical do DU — em qualquer altura do gráfico (04/09/2026).
+        interaction:{ mode:'index', intersect:false },
         plugins:{ legend:{position:'bottom'},
           tooltip:{ callbacks:{ label: c => c.dataset.label+': '+fmtV(c.parsed.y) } } },
         scales:{ y:{ ticks:{ callback: v => fmtV(v) } } } }
