@@ -193,6 +193,8 @@ Além do recorte por CPF, monta **grupos** (componentes conexos do grafo CPF–c
 
 A aba **Analítico** ganhou o botão **🔎 Coincidência**, que cruza esse recorte com todos os outros filtros e entra no export Excel.
 
+**Export próprio (⬇ Excel na sub-aba):** baixa o relatório inteiro, não só a tabela visível — 7 abas: *Resumo* (totais por nível + as ressalvas de leitura em texto, para o arquivo não circular sem elas), *Por faixa de atraso*, *Por faixa de valor*, *Grupos*, *E-mails a validar*, *Descartados* e *Analitico*. A aba nominal respeita os filtros de nível/atraso da tela; as demais são sempre o mês inteiro. Nome do arquivo: `coincidencia_cadastro_AAAA-MM.xlsx`.
+
 ⚠️ **Este repositório é público.** A tabela nominal desta sub-aba mostra CPF, nome, cidade e assessoria de quem tem coincidência — decisão explícita do usuário em 08/09/2026, tomada depois de a exposição ter sido levantada e verificada (`data/*.json` respondem 200 sem autenticação). O login com Clerk existe na branch `clerk-login`, nunca foi para a `main`, e está parado num bug de magic link desde 27/08/2026.
 
 ## Filtros e toggles do dashboard

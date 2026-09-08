@@ -825,6 +825,7 @@ body.dark .fr-alerta{background:rgba(217,119,6,.13)}
         <option value="">Todas as faixas de atraso</option>
         <option value="curto">Só atraso até 30 dias</option>
       </select>
+      <button class="btn-export" onclick="frExport()" title="Baixa o relatório completo em Excel: resumo, matrizes por faixa, grupos, e-mails a validar e a lista nominal com os filtros acima aplicados">⬇ Excel</button>
       <span id="fr-analitico-info" class="fr-info"></span>
     </div>
     <div id="fr-tab-analitico" class="an-table-wrap"></div>
@@ -3553,6 +3554,93 @@ function frRenderAnalitico(){
   mais.innerHTML = total > vis.length
     ? `<button class="sub-btn" onclick="_frLimite+=500;frRenderAnalitico()">Mostrar mais (${fmt(total-vis.length)} restantes)</button>`
     : '';
+}
+
+// Exporta o relatório inteiro, não só a tabela visível: quem vai verificar
+// isso trabalha fora do dashboard, e separar em abas evita ter que remontar
+// os cruzamentos na mão. A aba nominal respeita os filtros da tela; as demais
+// são sempre o mês inteiro.
+function frExport(){
+  if(typeof XLSX==='undefined'){alert('Carregando biblioteca Excel, tente novamente.');return;}
+  const F = D && D.fraude;
+  if(!F) return;
+  const AS_LIST = D.assessoria_list||[], AG_LIST = D.ag_list||[], UF_LIST = D.uf_list||[];
+  const wb = XLSX.utils.book_new();
+  const add = (nome, aoa) => XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(aoa), nome);
+
+  const dep = F.dependente_de_email_nao_validado || {};
+  add('Resumo', [
+    ['Coincidência de cadastro — carteira Z-ON Card'],
+    ['Período', D.periodo||''],
+    ['Atualizado em', D.atualizado_em||''],
+    ['Sinais disponíveis nesta base', F.sinais_disponiveis],
+    [],
+    ['O que é', 'Clientes cujo telefone, e-mail ou endereço aparece também em outro CPF.'],
+    ['', 'O nível é quantos sinais coincidem: Alto=3, Médio=2, Baixo=1.'],
+    ['Atenção', 'Não é acusação. República, asilo, casal e loja que cadastra o próprio e-mail'],
+    ['', 'produzem a mesma assinatura. O nível Baixo é majoritariamente família.'],
+    ['', 'Um mesmo grupo pode conter quem abriu a conta e a pessoa em nome de quem foi aberta.'],
+    [],
+    ['Nível','Clientes','Saldo (R$)'],
+    ...FR_TIERS.map(t=>[FR_ROTULO[t], F.tiers[t].qtd, F.tiers[t].saldo]),
+    ['TOTAL', F.total_suspeitos, F.total_saldo],
+    [],
+    ['Grupos formados', F.total_clusters],
+    ['Em atraso até 30 dias', F.atraso_curto.qtd, F.atraso_curto.saldo],
+    [],
+    ['E-mails muito repetidos ainda não classificados', F.emails_revisar.length],
+    ['  clientes ligados a eles', dep.qtd||0, dep.saldo||0],
+    ['  ...que têm o e-mail como ÚNICO vínculo', dep.so_email||0, dep.so_email_saldo||0],
+    ['  ...que dividem também telefone/endereço', dep.sobreviveria||0, dep.sobreviveria_saldo||0],
+  ]);
+
+  const matriz = (dados, labels) => [
+    ['Nível', ...labels.flatMap(l=>[l+' (qtd)', l+' (R$)'])],
+    ...FR_TIERS.map(t=>[FR_ROTULO[t], ...labels.flatMap((_,i)=>[dados[t][i].qtd, dados[t][i].saldo])])
+  ];
+  add('Por faixa de atraso', matriz(F.por_faixa_atraso, D.fa_labels));
+  add('Por faixa de valor',  matriz(F.por_faixa_valor,  D.fv_labels));
+
+  add('Grupos', [
+    ['#','ID do grupo','Nível','Sinais (T/E/A)','CPFs','Saldo (R$)','Atraso médio (d)',
+     'Em atraso ≤30d','Cidades','Nº de cidades','E-mail compartilhado','Endereço compartilhado','Telefone compartilhado'],
+    ...F.clusters.map((c,i)=>[i+1, c.id,
+      FR_ROTULO[c.tipos.length===3?'ALTA':c.tipos.length===2?'MEDIA':'BAIXA'],
+      c.tipos, c.cpfs, c.saldo, c.atraso_medio, c.curto,
+      c.cidades.join(', '), c.n_cidades, c.email, c.endereco, c.telefone])
+  ]);
+
+  add('E-mails a validar', [
+    ['E-mail','CPFs','Saldo (R$)','Só o e-mail liga','Divide também telefone/endereço',
+     'Sobrenomes distintos','Cidades','Nº de cidades','Em nível alto/médio'],
+    ...F.emails_revisar.map(r=>[r.email, r.cpfs, r.saldo, r.so_email||0, r.com_outro_sinal||0,
+      r.sobrenomes, r.cidades.join(', '), r.n_cidades, r.em_alta_media])
+  ]);
+
+  add('Descartados', [
+    ['E-mail descartado como preenchimento','CPFs que o usavam'],
+    ...(F.emails_filtrados||[]).map(r=>[r.email, r.cpfs])
+  ]);
+
+  if(ANALITICO){
+    const nivel = document.getElementById('fr-nivel').value;
+    const soCurto = document.getElementById('fr-atraso').value === 'curto';
+    const linhas = ANALITICO
+      .filter(r => r[30] >= 0 && (nivel === '' || r[30] === +nivel) && (!soCurto || r[3] <= 30))
+      .sort((a,b)=>(b[5]||0)-(a[5]||0));
+    const maxTel = linhas.reduce((m,r)=> r[29] ? Math.max(m, r[29].length) : m, 0);
+    const cab = ['CPF/CNPJ','Nome','Nível','Sinais','Dias Atraso','Faixa Atraso','Saldo (R$)',
+                 'Cidade','UF','Agrupador','Assessoria','ID do grupo'];
+    for(let i=1;i<=maxTel;i++) cab.push(`Telefone ${i}`);
+    add('Analitico', [cab, ...linhas.map(r=>{
+      const row = [r[0], r[1], FR_ROTULO[FR_TIERS[r[30]]], r[31], r[3], (D.fa_labels||[])[r[4]]||r[4],
+                   r[5], r[9], UF_LIST[r[8]]||'', AG_LIST[r[7]]||'', AS_LIST[r[13]]||'', r[32]];
+      for(let i=0;i<maxTel;i++) row.push((r[29]&&r[29][i])||'');
+      return row;
+    })]);
+  }
+
+  XLSX.writeFile(wb, `coincidencia_cadastro_${document.getElementById('mes-select').value}.xlsx`);
 }
 
 function renderCarteira(){
