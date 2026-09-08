@@ -301,6 +301,12 @@ score_c   = find_col(cart, ["score fatura","score_fatura","score"])
 # Telefones (28/08/2026→): opcional, mesmo padrão de tolerância acima — meses
 # anteriores à coluna existir simplesmente ficam com "_telefone" vazio.
 tel_c     = find_col(cart, ["telefones","telefone","telefone(s)","celular","contato"])
+# Dado de contato para o bloco de FRAUDE (08/09/2026→) — o export passou de 23
+# para 28 colunas. Todas opcionais pelo mesmo padrão gracioso: mês sem elas
+# simplesmente não ganha a sub-aba, nada quebra.
+email_c   = find_col(cart, ["emails","email","e-mail","e-mails"])
+end_c     = find_col(cart, ["endereço","endereco","logradouro"])
+cep_c     = find_col(cart, ["cep"])
 
 print(f"  CPF:{cpf_c}  Nome:{nome_c}  Tipo:{tipo_c}  Agrupador:{ag_c}")
 print(f"  Dias:{dias_c}  SC:{sc_c}  STA:{sta_c}  SAT:{sat_c}")
@@ -1520,6 +1526,26 @@ mes_json["esperado_realizado_propensao"] = {
 
 
 # ================================================================
+#  FRAUDE — coincidência de cadastro entre CPFs (08/09/2026)
+# ================================================================
+print("  Cruzando coincidência de cadastro (fraude)...")
+import _fraude_bloco
+fraude_bloco, fraude_por_cpf = _fraude_bloco.calcular(
+    cart, tel_c, email_c, end_c, cep_c, FA_LABELS, FV_LABELS, lambda v: round(float(v), 2))
+if fraude_bloco:
+    mes_json["fraude"] = fraude_bloco
+    _t = fraude_bloco["tiers"]
+    print(f"    → {fraude_bloco['total_suspeitos']:,} CPFs com sinal "
+          f"(ALTA {_t['ALTA']['qtd']:,} | MÉDIA {_t['MEDIA']['qtd']:,} | BAIXA {_t['BAIXA']['qtd']:,}) "
+          f"em {fraude_bloco['total_clusters']:,} grupos")
+    if fraude_bloco["emails_revisar"]:
+        print(f"    ⚠ {len(fraude_bloco['emails_revisar'])} e-mail(s) aguardando validação manual — "
+              f"sustentam {fraude_bloco['dependente_de_email_nao_validado']['qtd']:,} CPFs")
+else:
+    print("    (CSV do mês sem e-mail/endereço — sub-aba Fraude não será gerada)")
+
+
+# ================================================================
 #  Montar YYYY-MM-analitico.json
 #  Array plano — formato lido diretamente por ANALITICO.filter(...)
 #  [CPF, Nome, Tipo, Dias, fa_idx, Saldo, fv_idx,
@@ -1529,7 +1555,8 @@ mes_json["esperado_realizado_propensao"] = {
 #   collection_score, collection_band,
 #   is_funcionario, filial_idx, cargo_idx,
 #   propensao_score, propensao_band,
-#   telefones]  # 29: lista de strings (0..N números), [] se não aplicável
+#   telefones,   # 29: lista de strings (0..N números), [] se não aplicável
+#   fraude_tier, fraude_sinais, fraude_cluster]  # 30–32, novos em 08/09/2026
 # ================================================================
 print("  Montando analítico...")
 rows = []
@@ -1565,6 +1592,11 @@ for _, r in cart.iterrows():
         round(float(r["_propscore"]), 1),   # 27 propensao_score (probabilidade %, 0-100, novo em 21/08/2026)
         int(r["_propband"]),                # 28 propensao_band (0=A alta ... 3=D baixa, -1=sem histórico)
         list(r["_telefone"]),                # 29 telefones — lista, novo em 28/08/2026; [] se o CSV daquele mês não tinha a coluna
+        # 30–32: FRAUDE (08/09/2026). fraude_tier: 0=ALTA 1=MÉDIA 2=BAIXA,
+        # -1 = sem coincidência (ou mês sem e-mail/endereço no CSV).
+        fraude_por_cpf.get(str(r["_cpf"]), (-1, "", -1))[0],   # 30 fraude_tier
+        fraude_por_cpf.get(str(r["_cpf"]), (-1, "", -1))[1],   # 31 fraude_sinais ("TEA")
+        fraude_por_cpf.get(str(r["_cpf"]), (-1, "", -1))[2],   # 32 fraude_cluster
     ])
 
 print(f"  → {len(rows):,} registros no analítico")

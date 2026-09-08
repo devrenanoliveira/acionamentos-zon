@@ -326,6 +326,30 @@ body.dark .an-as{color:#FB923C}
 body.dark .filter-notice{background:rgba(59,130,246,.08)}
 .colab-tab-banner{font-size:12px;color:var(--ink3);background:rgba(217,119,6,.07);border:1px solid rgba(217,119,6,.22);border-radius:var(--r-md);padding:9px 12px;margin-bottom:14px;line-height:1.5}
 body.dark .colab-tab-banner{background:rgba(217,119,6,.1)}
+/* ── Sub-aba Coincidência de cadastro (08/09/2026) ────────────────── */
+.fr-banner{font-size:12.5px;color:var(--ink2);background:rgba(59,130,246,.06);border-left:3px solid var(--blue-dark);border-radius:0 var(--r-md) var(--r-md) 0;padding:12px 15px;margin-bottom:16px;line-height:1.55}
+body.dark .fr-banner{background:rgba(59,130,246,.1)}
+.fr-hint{font-size:11.5px;color:var(--ink3);line-height:1.5;margin:-2px 0 10px;max-width:none}
+.fr-alerta{font-size:12.5px;color:var(--ink2);background:rgba(217,119,6,.09);border:1px solid rgba(217,119,6,.32);border-radius:var(--r-md);padding:11px 14px;margin-bottom:14px;line-height:1.55}
+body.dark .fr-alerta{background:rgba(217,119,6,.13)}
+.fr-alerta b{color:var(--ink)}
+.fr-tiers{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:12px}
+.fr-tier{border:1px solid var(--border);border-radius:var(--r-lg);padding:13px 15px;background:var(--card)}
+.fr-tier.alta{background:rgba(220,38,38,.06);border-color:rgba(220,38,38,.3)}
+.fr-tier.media{background:rgba(217,119,6,.06);border-color:rgba(217,119,6,.3)}
+.fr-tier .h{font-size:11px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;margin-bottom:3px}
+.fr-tier.alta .h{color:#DC2626} .fr-tier.media .h{color:#B45309} .fr-tier.baixa .h{color:var(--ink3)}
+.fr-tier .r{font-size:11.5px;color:var(--ink3);line-height:1.45;margin-bottom:9px;min-height:31px}
+.fr-tier .v{font-size:20px;font-weight:700;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+.fr-tier .s{font-size:12px;color:var(--ink3);font-variant-numeric:tabular-nums}
+.fr-pill{display:inline-block;padding:1px 7px;border-radius:5px;font-size:10px;font-weight:700;letter-spacing:.05em;color:#fff}
+.fr-pill.alta{background:#DC2626} .fr-pill.media{background:#B45309} .fr-pill.baixa{background:#64748B}
+.fr-sig{font-family:ui-monospace,Menlo,monospace;font-size:11px;color:var(--ink3);letter-spacing:.11em}
+.fr-controls{display:flex;gap:9px;align-items:center;flex-wrap:wrap;margin-bottom:10px}
+.fr-controls select{padding:6px 10px;font-size:12px;border:1.5px solid var(--border);border-radius:var(--r-md);background:var(--card);color:var(--ink)}
+.fr-info{font-size:11.5px;color:var(--ink3);font-variant-numeric:tabular-nums}
+.fr-ev{white-space:normal;max-width:270px;font-size:11.5px;line-height:1.45}
+.fr-ev .k{color:var(--ink3);font-size:10px;text-transform:uppercase;letter-spacing:.05em;margin-right:3px}
 /* CARTEIRA SUB-TABS */
 .sub-tabs{display:flex;gap:6px;margin-bottom:16px;flex-wrap:wrap}
 .sub-btn{padding:6px 16px;font-size:12px;border:1.5px solid var(--border);border-radius:var(--r-md);background:var(--card);color:var(--ink3);cursor:pointer;font-weight:500;transition:all .15s}
@@ -572,6 +596,7 @@ body.dark .colab-tab-banner{background:rgba(217,119,6,.1)}
       <button class="sub-btn" onclick="showCarteiraSub('score',this)">Score Fatura</button>
       <button class="sub-btn" onclick="showCarteiraSub('agrupador',this)">Carteira Interna</button>
       <button class="sub-btn" id="sub-btn-colaboradores" onclick="showCarteiraSub('colaboradores',this)" style="display:none">🏢 Colaboradores</button>
+      <button class="sub-btn" id="sub-btn-fraude" onclick="showCarteiraSub('fraude',this)" style="display:none">🔎 Coincidência de cadastro</button>
     </div>
     <div class="cv-toggle" id="cv-toggle">
       <button id="cv-btn-qtd" class="cv-toggle-btn active" onclick="setCarteiraViewMode('qtd')">🔢 Quantidade</button>
@@ -725,6 +750,81 @@ body.dark .colab-tab-banner{background:rgba(217,119,6,.1)}
     <div class="sec-label" style="margin-top:4px">Detalhe por faixa de atraso</div>
     <div id="c-colaboradores-table"></div>
   </div>
+
+  <!-- ══ FRAUDE — coincidência de cadastro (08/09/2026) ══ -->
+  <div id="csub-fraude" class="sub-panel">
+    <div class="fr-banner">
+      <b>O que esta aba mostra.</b> Clientes cujo <b>telefone, e-mail ou endereço aparece também em outro CPF</b>.
+      Cada coincidência conta como um sinal, e o nível é simplesmente quantos sinais batem ao mesmo tempo.
+      Não existe score nem modelo: qualquer linha aqui pode ser conferida na mão.
+      <br><br>
+      <b>Isto não é uma acusação.</b> República, asilo, casal, família numerosa e loja que cadastra o próprio
+      e-mail produzem exatamente a mesma assinatura de dados. O que a aba entrega é uma <b>fila de verificação</b>,
+      não uma conclusão — e um mesmo grupo pode conter tanto quem abriu a conta quanto a pessoa em nome de quem
+      ela foi aberta.
+    </div>
+
+    <div id="fr-alerta-email"></div>
+
+    <div class="kpi-grid" id="kpi-fraude"></div>
+
+    <div class="sec-label" style="margin-top:18px">Os três níveis</div>
+    <div id="fr-tiers" class="fr-tiers"></div>
+
+    <div class="sec-label" style="margin-top:20px">Por faixa de atraso</div>
+    <div class="fr-hint">A coluna <b>1–30d</b> é onde aparece coincidência em conta recém-aberta — o recorte mais acionável.</div>
+    <div id="fr-tab-atraso" class="an-table-wrap"></div>
+
+    <div class="sec-label" style="margin-top:20px">Por faixa de valor</div>
+    <div id="fr-tab-valor" class="an-table-wrap"></div>
+
+    <div class="sec-label" style="margin-top:20px">Grupos a verificar</div>
+    <div class="fr-hint">
+      Um <b>grupo</b> é um conjunto de CPFs ligados entre si por dado compartilhado — é a unidade que se
+      verifica, não o CPF isolado. Ordenado por tamanho, com peso extra para quem tem mais sinais.
+      <b>T/E/A</b> = quais sinais ligam o grupo (Telefone / E-mail / Endereço). O número entre parênteses
+      na evidência é em quantos CPFs aquela chave aparece.
+    </div>
+    <div id="fr-tab-clusters" class="an-table-wrap"></div>
+
+    <div class="sec-label" style="margin-top:20px">E-mails aguardando validação</div>
+    <div class="fr-hint">
+      E-mails que aparecem em muitos CPFs e que o filtro automático <b>não</b> classificou como preenchimento.
+      Cada um pode ser duas coisas opostas: uma pessoa que cadastrou vários cartões, ou o e-mail de uma loja,
+      atendente ou promotor digitado no lugar de quem não tinha. <b>Enquanto não forem validados, os números
+      acima estão inflados nessa proporção.</b> Estar nesta lista não presume nem uma coisa nem outra.
+    </div>
+    <div id="fr-tab-emails" class="an-table-wrap"></div>
+
+    <div class="sec-label" style="margin-top:20px">Descartados automaticamente</div>
+    <div class="fr-hint">
+      E-mails de preenchimento que o filtro derrubou antes do cruzamento. Sem isso, as pessoas que dividem
+      <code>naotenho@gmail.com</code> virariam um grupo enorme e falso. Confira se não está sendo descartado
+      nada legítimo.
+    </div>
+    <div id="fr-tab-filtrados" class="an-table-wrap"></div>
+
+    <div class="sec-label" style="margin-top:20px">Analítico — clientes com coincidência</div>
+    <div class="fr-hint">
+      Lista nominal, ordenada por saldo. Use o seletor para filtrar o nível. Para cruzar com os demais filtros
+      (assessoria, faixa, canal) e exportar para Excel, a aba <b>Analítico</b> tem o botão <b>🔎 Coincidência</b>.
+    </div>
+    <div class="fr-controls">
+      <select id="fr-nivel" onchange="frRender()">
+        <option value="">Todos os níveis</option>
+        <option value="0">Só nível alto (3 sinais)</option>
+        <option value="1">Só nível médio (2 sinais)</option>
+        <option value="2">Só nível baixo (1 sinal)</option>
+      </select>
+      <select id="fr-atraso" onchange="frRender()">
+        <option value="">Todas as faixas de atraso</option>
+        <option value="curto">Só atraso até 30 dias</option>
+      </select>
+      <span id="fr-analitico-info" class="fr-info"></span>
+    </div>
+    <div id="fr-tab-analitico" class="an-table-wrap"></div>
+    <div id="fr-analitico-mais" style="margin-top:10px"></div>
+  </div>
 </div>
 
 <!-- ══ ANALÍTICO ══ -->
@@ -806,6 +906,7 @@ let csSoAcordo = false; // toggle local: incluir na lista quem já está em acor
 const CS_PAGE = 50;
 let anAcordo = false; // filtro: mostrar apenas clientes com acordo (aba Analítico)
 let anColab = false; // filtro: mostrar apenas clientes que também são colaboradores (aba Analítico, novo em 21/08/2026)
+let anFraude = false; // filtro: só clientes com coincidência de cadastro (08/09/2026)
 let anUseOwnQtd = false; // true quando o filtro "Qtd. Acionamentos" está usando a contagem por assessoria (r[16]) em vez da global (r[10]) — ver anFilter()
 let showAcordos = false; // toggle: incluir clientes em acordo nas métricas gerais
 let selAtraso = null, selValor = null;
@@ -831,6 +932,11 @@ function getAD(){
 // ═══════════════════════════════════════════
 const fmt = n => Number(n).toLocaleString('pt-BR');
 const fmtSaldo = v => Number(v).toLocaleString('pt-BR',{minimumFractionDigits:2});
+// Escapa texto vindo do CSV antes de entrar em innerHTML. Nome, cidade e
+// e-mail são digitados por atendente e vão parar num site público — um "<"
+// solto quebra a tabela, e um "<img onerror=...>" seria XSS de verdade.
+const esc = s => String(s==null?'':s).replace(/[&<>"']/g,
+  c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 function fmtCPF(d){
   if(d.length===11) return d.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/,'$1.$2.$3-$4');
   if(d.length===14) return d.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/,'$1.$2.$3/$4-$5');
@@ -2061,6 +2167,7 @@ function renderAnalitico(){
       </select>
       <button id="btn-acordo" class="btn-acordo ${anAcordo?'active':''}" onclick="toggleAcordo()" title="Clientes com acordo de pagamento (Ativo + dias=0)">🤝 Acordo</button>
       ${showColab?`<button id="btn-colab" class="btn-acordo ${anColab?'active':''}" onclick="toggleColab()" title="Clientes da carteira que também são colaboradores do grupo (cruzamento por CPF)">🏢 Colaborador</button>`:''}
+      ${(D&&D.fraude)?`<button id="btn-fraude" class="btn-acordo ${anFraude?'active':''}" onclick="toggleFraude()" title="Clientes cujo telefone, e-mail ou endereço aparece também em outro CPF — fila de verificação, não acusação">🔎 Coincidência</button>`:''}
       <button class="btn-clear" onclick="anClear()">Limpar</button>
       <button class="btn-export" onclick="anExport()">⬇ Excel</button>
     </div>
@@ -2173,6 +2280,7 @@ function anFilter(){
     // Filtro "🏢 Colaborador": isola só quem bateu com a planilha de RH por CPF
     // (r[24]===1). Novo em 21/08/2026 — ver toggleColab().
     if(anColab && r[24]!==1) return false;
+    if(anFraude && !(r[30] >= 0)) return false;
     return true;
   });
   if(anSortCol>=0) anApplySort();
@@ -2204,6 +2312,13 @@ function toggleColab(){
   anPage=1; anFilter();
 }
 
+function toggleFraude(){
+  anFraude = !anFraude;
+  const btn = document.getElementById('btn-fraude');
+  if(btn) btn.classList.toggle('active', anFraude);
+  anPage=1; anFilter();
+}
+
 function anClear(){
   ['an-search','an-fa','an-fv','an-ag','an-uf','an-tipo','an-as'].forEach(id=>{
     const el=document.getElementById(id);
@@ -2222,6 +2337,7 @@ function anClear(){
   if(btnAcordo) btnAcordo.classList.remove('active');
   // Limpar filtro de colaborador
   anColab = false;
+  anFraude = false;
   const btnColab = document.getElementById('btn-colab');
   if(btnColab) btnColab.classList.remove('active');
   // Limpar também filtros globais tipo/motivo
@@ -3251,6 +3367,181 @@ function renderAllCartDims(){
   const colabBtn = document.getElementById('sub-btn-colaboradores');
   if(colabBtn) colabBtn.style.display = showColabTab ? '' : 'none';
   if(showColabTab) renderCartDim('colaboradores', 'Faixa de Atraso');
+  // Sub-aba "Coincidência de cadastro" (08/09/2026): só quando o CSV do mês
+  // trouxe e-mail/endereço e o Python gerou o bloco. Mesmo padrão gracioso.
+  const frBtn = document.getElementById('sub-btn-fraude');
+  if(frBtn) frBtn.style.display = (D && D.fraude) ? '' : 'none';
+  if(D && D.fraude) frRender();
+}
+
+// ═══════════════════════════════════════════
+// COINCIDÊNCIA DE CADASTRO / FRAUDE (08/09/2026)
+// Lê D.fraude (bloco pré-calculado por _fraude_bloco.py) para tudo que é
+// agregado, e ANALITICO[30..32] para a lista nominal. Mês cujo CSV não tinha
+// e-mail/endereço não gera o bloco e a sub-aba nem aparece — mesmo padrão
+// gracioso de Colaboradores.
+// ═══════════════════════════════════════════
+const FR_TIERS = ['ALTA','MEDIA','BAIXA'];
+const FR_ROTULO = {ALTA:'Alto', MEDIA:'Médio', BAIXA:'Baixo'};
+const FR_CLS = {ALTA:'alta', MEDIA:'media', BAIXA:'baixa'};
+const FR_REGRA = {
+  ALTA:  'telefone <b>e</b> e-mail <b>e</b> endereço coincidem com outro CPF',
+  MEDIA: 'dois dos três coincidem',
+  BAIXA: 'só um dado coincide — aqui mora a maior parte dos casos legítimos'
+};
+let _frLimite = 200;
+
+function frRender(){
+  const F = D && D.fraude;
+  if(!F) return;
+  const cartTotal = (D.atraso||[]).reduce((s,x)=>s+(x.saldo||0),0) || 0;
+
+  // ── alerta de e-mail não validado ──
+  const dep = F.dependente_de_email_nao_validado || {qtd:0};
+  const elAl = document.getElementById('fr-alerta-email');
+  elAl.innerHTML = dep.qtd ? `<div class="fr-alerta">
+    ⚠️ <b>Os números desta aba ainda não estão validados.</b>
+    ${fmt(dep.qtd)} ${dep.qtd===1?'cliente depende':'clientes dependem'} de
+    ${F.emails_revisar.length} e-mail(s) que podem ser cadastro de loja ou atendente, e não de uma pessoa —
+    ${fmt(dep.alta_media)} deles nos níveis alto/médio (R$ ${fmtSaldo(dep.alta_media_saldo)}).
+    Enquanto esses e-mails não forem confirmados, considere os totais como <b>teto</b>, não como número final.
+    Ver "E-mails aguardando validação" abaixo.</div>` : '';
+
+  // ── KPIs ──
+  const pct = cartTotal ? (F.total_saldo/cartTotal*100) : 0;
+  document.getElementById('kpi-fraude').innerHTML = `
+    <div class="kpi"><div class="kpi-label">Clientes com coincidência</div>
+      <div class="kpi-val">${fmt(F.total_suspeitos)}</div>
+      <div class="kpi-sub">de ${fmt(D.total_clientes)} na carteira</div></div>
+    <div class="kpi"><div class="kpi-label">Saldo envolvido</div>
+      <div class="kpi-val">R$ ${fmtSaldo(F.total_saldo)}</div>
+      <div class="kpi-sub">${pct.toFixed(2).replace('.',',')}% da carteira</div></div>
+    <div class="kpi"><div class="kpi-label">Grupos formados</div>
+      <div class="kpi-val">${fmt(F.total_clusters)}</div>
+      <div class="kpi-sub">CPFs ligados entre si</div></div>
+    <div class="kpi"><div class="kpi-label">Nível alto</div>
+      <div class="kpi-val" style="color:#DC2626">${fmt(F.tiers.ALTA.qtd)}</div>
+      <div class="kpi-sub">R$ ${fmtSaldo(F.tiers.ALTA.saldo)} — os 3 sinais juntos</div></div>
+    <div class="kpi"><div class="kpi-label">Em atraso até 30d</div>
+      <div class="kpi-val">${fmt(F.atraso_curto.qtd)}</div>
+      <div class="kpi-sub">R$ ${fmtSaldo(F.atraso_curto.saldo)} — conta recente</div></div>`;
+
+  // ── cards de nível ──
+  document.getElementById('fr-tiers').innerHTML = FR_TIERS.map(t=>{
+    const v = F.tiers[t], p = F.total_suspeitos ? v.qtd/F.total_suspeitos*100 : 0;
+    return `<div class="fr-tier ${FR_CLS[t]}">
+      <div class="h">${FR_ROTULO[t]}</div>
+      <div class="r">${FR_REGRA[t]}</div>
+      <div class="v">${fmt(v.qtd)} clientes</div>
+      <div class="s">R$ ${fmtSaldo(v.saldo)} · ${p.toFixed(1).replace('.',',')}% dos casos</div>
+    </div>`;
+  }).join('');
+
+  // ── matrizes tier × faixa ──
+  const matriz = (dados, labels) => {
+    const usadas = labels.map((_,i)=>FR_TIERS.some(t=>dados[t][i] && dados[t][i].qtd>0));
+    const cols = labels.map((l,i)=>usadas[i]?`<th style="text-align:right">${l}</th>`:'').join('');
+    const linhas = FR_TIERS.map(t=>{
+      const cels = labels.map((_,i)=>{
+        if(!usadas[i]) return '';
+        const c = dados[t][i];
+        return c && c.qtd
+          ? `<td style="text-align:right"><b>${fmt(c.qtd)}</b><div style="font-size:10.5px;color:var(--ink3)">R$ ${fmtSaldo(c.saldo)}</div></td>`
+          : '<td style="text-align:right;color:var(--ink3)">—</td>';
+      }).join('');
+      return `<tr><td><span class="fr-pill ${FR_CLS[t]}">${FR_ROTULO[t]}</span></td>${cels}</tr>`;
+    }).join('');
+    return `<table class="an-table"><thead><tr><th>Nível</th>${cols}</tr></thead><tbody>${linhas}</tbody></table>`;
+  };
+  document.getElementById('fr-tab-atraso').innerHTML = matriz(F.por_faixa_atraso, D.fa_labels);
+  document.getElementById('fr-tab-valor').innerHTML  = matriz(F.por_faixa_valor,  D.fv_labels);
+
+  // ── grupos ──
+  document.getElementById('fr-tab-clusters').innerHTML =
+    `<table class="an-table"><thead><tr>
+      <th>#</th><th>Sinais</th><th style="text-align:right">CPFs</th>
+      <th style="text-align:right">Saldo</th><th style="text-align:right">Atraso méd.</th>
+      <th style="text-align:right">≤30d</th><th>Cidade</th><th>Evidência</th></tr></thead><tbody>` +
+    F.clusters.map((c,i)=>{
+      const ev = [];
+      if(c.email)    ev.push(`<span class="k">e-mail</span>${esc(c.email)}`);
+      if(c.endereco) ev.push(`<span class="k">endereço</span>${esc(c.endereco)}`);
+      if(!ev.length && c.telefone) ev.push(`<span class="k">telefone</span>${esc(c.telefone)}`);
+      const nivel = c.tipos.length===3?'ALTA':c.tipos.length===2?'MEDIA':'BAIXA';
+      const mais  = c.n_cidades>3 ? ` +${c.n_cidades-3}` : '';
+      return `<tr><td style="color:var(--ink3)">${i+1}</td>
+        <td><span class="fr-pill ${FR_CLS[nivel]}">${FR_ROTULO[nivel]}</span> <span class="fr-sig">${c.tipos}</span></td>
+        <td style="text-align:right"><b>${fmt(c.cpfs)}</b></td>
+        <td style="text-align:right">R$ ${fmtSaldo(c.saldo)}</td>
+        <td style="text-align:right">${c.atraso_medio}d</td>
+        <td style="text-align:right">${c.curto||'—'}</td>
+        <td>${esc(c.cidades.join(', '))}${mais}</td>
+        <td class="fr-ev">${ev.join('<br>')}</td></tr>`;
+    }).join('') + '</tbody></table>';
+
+  // ── e-mails a validar ──
+  document.getElementById('fr-tab-emails').innerHTML = F.emails_revisar.length
+    ? `<table class="an-table"><thead><tr><th>E-mail</th><th style="text-align:right">CPFs</th>
+       <th style="text-align:right">Saldo</th><th style="text-align:right">Sobrenomes distintos</th>
+       <th>Cidades</th><th style="text-align:right">Em nível alto/médio</th></tr></thead><tbody>` +
+      F.emails_revisar.map(r=>`<tr><td>${esc(r.email)}</td>
+        <td style="text-align:right"><b>${fmt(r.cpfs)}</b></td>
+        <td style="text-align:right">R$ ${fmtSaldo(r.saldo)}</td>
+        <td style="text-align:right">${fmt(r.sobrenomes)}</td>
+        <td>${esc(r.cidades.join(', '))}${r.n_cidades>3?` +${r.n_cidades-3}`:''}</td>
+        <td style="text-align:right">${fmt(r.em_alta_media)}</td></tr>`).join('') + '</tbody></table>'
+    : '<div class="fr-hint">Nenhum e-mail acima do limiar aguardando validação.</div>';
+
+  document.getElementById('fr-tab-filtrados').innerHTML =
+    `<table class="an-table"><thead><tr><th>E-mail descartado</th><th style="text-align:right">CPFs que o usavam</th></tr></thead><tbody>` +
+    (F.emails_filtrados||[]).map(r=>`<tr><td>${esc(r.email)}</td><td style="text-align:right">${fmt(r.cpfs)}</td></tr>`).join('') +
+    '</tbody></table>';
+
+  frRenderAnalitico();
+}
+
+function frRenderAnalitico(){
+  const el = document.getElementById('fr-tab-analitico');
+  const info = document.getElementById('fr-analitico-info');
+  const mais = document.getElementById('fr-analitico-mais');
+  if(!ANALITICO){
+    el.innerHTML = '<div class="fr-hint" style="padding:14px">Carregando o analítico…</div>';
+    info.textContent = ''; mais.innerHTML = '';
+    loadAnaliticoSilent().then(()=>{ if(ANALITICO) frRenderAnalitico(); });
+    return;
+  }
+  const nivel  = document.getElementById('fr-nivel').value;
+  const soCurto = document.getElementById('fr-atraso').value === 'curto';
+  let linhas = ANALITICO.filter(r => r[30] >= 0
+    && (nivel === '' || r[30] === +nivel)
+    && (!soCurto || r[3] <= 30));
+  linhas.sort((a,b)=> (b[5]||0)-(a[5]||0));
+
+  const total = linhas.length;
+  const somaSaldo = linhas.reduce((s,r)=>s+(r[5]||0),0);
+  const vis = linhas.slice(0, _frLimite);
+  info.innerHTML = `${fmt(total)} cliente(s) · R$ ${fmtSaldo(somaSaldo)}` +
+    (total > vis.length ? ` · mostrando ${fmt(vis.length)}` : '');
+
+  el.innerHTML = `<table class="an-table"><thead><tr>
+      <th>CPF</th><th>Nome</th><th>Nível</th><th>Sinais</th>
+      <th style="text-align:right">Dias</th><th style="text-align:right">Saldo</th>
+      <th>Cidade</th><th>Assessoria</th><th style="text-align:right">Grupo</th>
+    </tr></thead><tbody>` + vis.map(r=>{
+      const t = FR_TIERS[r[30]];
+      return `<tr><td>${fmtCPF(r[0])}</td><td>${esc(r[1])}</td>
+        <td><span class="fr-pill ${FR_CLS[t]}">${FR_ROTULO[t]}</span></td>
+        <td><span class="fr-sig">${esc(r[31]||'')}</span></td>
+        <td style="text-align:right">${fmt(r[3])}</td>
+        <td style="text-align:right">R$ ${fmtSaldo(r[5]||0)}</td>
+        <td>${esc(r[9]||'')}</td>
+        <td>${esc((D.assessoria_list&&D.assessoria_list[r[13]])||'')}</td>
+        <td style="text-align:right;color:var(--ink3)">#${r[32]}</td></tr>`;
+    }).join('') + '</tbody></table>';
+
+  mais.innerHTML = total > vis.length
+    ? `<button class="sub-btn" onclick="_frLimite+=500;frRenderAnalitico()">Mostrar mais (${fmt(total-vis.length)} restantes)</button>`
+    : '';
 }
 
 function renderCarteira(){
