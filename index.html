@@ -791,8 +791,13 @@ body.dark .fr-alerta{background:rgba(217,119,6,.13)}
     <div class="fr-hint">
       E-mails que aparecem em muitos CPFs e que o filtro automático <b>não</b> classificou como preenchimento.
       Cada um pode ser duas coisas opostas: uma pessoa que cadastrou vários cartões, ou o e-mail de uma loja,
-      atendente ou promotor digitado no lugar de quem não tinha. <b>Enquanto não forem validados, os números
-      acima estão inflados nessa proporção.</b> Estar nesta lista não presume nem uma coisa nem outra.
+      atendente ou promotor digitado no lugar de quem não tinha. <b>Estar nesta lista não presume nem uma
+      coisa nem outra</b> — é uma fila de classificação, não uma suspeita de preenchimento.
+      <br><br>
+      A coluna que decide é <b>"Só o e-mail liga"</b>: se as pessoas que dividem o e-mail não têm mais nada
+      em comum entre si, ele provavelmente foi digitado igual no cadastro de todas. Se elas dividem
+      <b>também</b> telefone ou endereço, existe ligação real entre elas e o e-mail não é o motivo — nesse
+      caso descartá-lo não tira ninguém da lista, só muda o nível.
     </div>
     <div id="fr-tab-emails" class="an-table-wrap"></div>
 
@@ -3400,12 +3405,14 @@ function frRender(){
   const dep = F.dependente_de_email_nao_validado || {qtd:0};
   const elAl = document.getElementById('fr-alerta-email');
   elAl.innerHTML = dep.qtd ? `<div class="fr-alerta">
-    ⚠️ <b>Os números desta aba ainda não estão validados.</b>
-    ${fmt(dep.qtd)} ${dep.qtd===1?'cliente depende':'clientes dependem'} de
-    ${F.emails_revisar.length} e-mail(s) que podem ser cadastro de loja ou atendente, e não de uma pessoa —
-    ${fmt(dep.alta_media)} deles nos níveis alto/médio (R$ ${fmtSaldo(dep.alta_media_saldo)}).
-    Enquanto esses e-mails não forem confirmados, considere os totais como <b>teto</b>, não como número final.
-    Ver "E-mails aguardando validação" abaixo.</div>` : '';
+    ⚠️ <b>${fmt(dep.qtd)} ${dep.qtd===1?'cliente está ligado':'clientes estão ligados'} a
+    ${F.emails_revisar.length} e-mail(s) muito repetido(s), ainda não classificados.</b>
+    Desses, <b>${fmt(dep.so_email)}</b> ${dep.so_email===1?'tem':'têm'} o e-mail como <b>único</b> vínculo
+    (R$ ${fmtSaldo(dep.so_email_saldo)}) — são os que sairiam da lista se o e-mail acabar sendo
+    preenchimento de loja ou atendente. Os outros <b>${fmt(dep.sobreviveria)}</b>
+    (R$ ${fmtSaldo(dep.sobreviveria_saldo)}) dividem <b>também</b> telefone ou endereço entre si:
+    esses continuariam na lista de qualquer forma, só cairiam de nível.
+    Ver "E-mails aguardando validação" abaixo, coluna <i>Só o e-mail liga</i>.</div>` : '';
 
   // ── KPIs ──
   const pct = cartTotal ? (F.total_saldo/cartTotal*100) : 0;
@@ -3482,11 +3489,15 @@ function frRender(){
   // ── e-mails a validar ──
   document.getElementById('fr-tab-emails').innerHTML = F.emails_revisar.length
     ? `<table class="an-table"><thead><tr><th>E-mail</th><th style="text-align:right">CPFs</th>
-       <th style="text-align:right">Saldo</th><th style="text-align:right">Sobrenomes distintos</th>
+       <th style="text-align:right">Saldo</th><th style="text-align:right">Só o e-mail liga</th>
+       <th style="text-align:right">Divide + telefone/endereço</th>
+       <th style="text-align:right">Sobrenomes distintos</th>
        <th>Cidades</th><th style="text-align:right">Em nível alto/médio</th></tr></thead><tbody>` +
       F.emails_revisar.map(r=>`<tr><td>${esc(r.email)}</td>
         <td style="text-align:right"><b>${fmt(r.cpfs)}</b></td>
         <td style="text-align:right">R$ ${fmtSaldo(r.saldo)}</td>
+        <td style="text-align:right">${fmt(r.so_email||0)}</td>
+        <td style="text-align:right"><b>${fmt(r.com_outro_sinal||0)}</b></td>
         <td style="text-align:right">${fmt(r.sobrenomes)}</td>
         <td>${esc(r.cidades.join(', '))}${r.n_cidades>3?` +${r.n_cidades-3}`:''}</td>
         <td style="text-align:right">${fmt(r.em_alta_media)}</td></tr>`).join('') + '</tbody></table>'

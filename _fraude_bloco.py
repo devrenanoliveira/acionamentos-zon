@@ -208,11 +208,17 @@ def calcular(cart, col_tel, col_email, col_end, col_cep, fa_labels, fv_labels, r
     clusters.sort(key=lambda c: (-c["prio"], -c["saldo"]))
 
     # ---- e-mails a revisar / placeholders filtrados ----
+    # `so_email` é o número que decide se um e-mail muito repetido é cadastro de
+    # terceiro ou vínculo real: se as pessoas que o dividem não têm mais nada em
+    # comum entre si, o e-mail foi só digitado igual; se dividem telefone ou
+    # endereço também, existe ligação de verdade e o e-mail não é o motivo.
+    # Não classificamos automaticamente por isso — só expomos o número.
+    susp_set = set(susp)
     revisar = []
     for k, rows in idx_mail.items():
         u = set(cpfs[i] for i in rows)
         if len(u) >= LIMIAR_REVISAO:
-            afet = [i for i in rows if i in set(susp)]
+            afet = [i for i in rows if i in susp_set]
             revisar.append({
                 "email": k,
                 "cpfs": len(u),
@@ -222,6 +228,8 @@ def calcular(cart, col_tel, col_email, col_end, col_cep, fa_labels, fv_labels, r
                 "sobrenomes": len(set(str(cart["_nome"].iloc[i]).split()[-1]
                                       for i in rows if str(cart["_nome"].iloc[i]).strip())),
                 "em_alta_media": sum(1 for i in afet if len(sig[i]) >= 2),
+                "so_email": sum(1 for i in afet if sig[i] == {"E"}),
+                "com_outro_sinal": sum(1 for i in afet if len(sig[i]) > 1),
             })
     revisar.sort(key=lambda x: -x["cpfs"])
 
@@ -234,9 +242,17 @@ def calcular(cart, col_tel, col_email, col_end, col_cep, fa_labels, fv_labels, r
         for i in idx_mail[r["email"]]:
             if i in set(susp):
                 dep.add(i)
+    # Separa quem depende SÓ do e-mail (sairia da lista se ele fosse descartado)
+    # de quem apenas cairia de nível — a distinção que impede de tratar um
+    # e-mail muito repetido como se invalidasse tudo que está ligado a ele.
+    dep_so = {i for i in dep if sig[i] == {"E"}}
     dependente = {
         "qtd": len(dep),
         "saldo": r2(sum(saldos[i] for i in dep)),
+        "so_email": len(dep_so),
+        "so_email_saldo": r2(sum(saldos[i] for i in dep_so)),
+        "sobreviveria": len(dep) - len(dep_so),
+        "sobreviveria_saldo": r2(sum(saldos[i] for i in dep - dep_so)),
         "alta_media": sum(1 for i in dep if len(sig[i]) >= 2),
         "alta_media_saldo": r2(sum(saldos[i] for i in dep if len(sig[i]) >= 2)),
     }
