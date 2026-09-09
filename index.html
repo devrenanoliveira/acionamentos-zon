@@ -1613,7 +1613,8 @@ function renderAll(){
 function renderGeral(){
   const ad = getAD();
   // Subtrai clientes em acordo das métricas se toggle desativado
-  const acordoEntry = !showAcordos ? (ad.atraso||[]).find(r=>r.label==='Acordo') : null;
+  const acordoRow   = (ad.atraso||[]).find(r=>r.label==='Acordo') || null;
+  const acordoEntry = !showAcordos ? acordoRow : null;
   const ef_total = ad.total_clientes - (acordoEntry ? acordoEntry.total : 0);
   const ef_acion = ad.acionados     - (acordoEntry ? acordoEntry.acion  : 0);
   const ef_nao   = ad.sem_acionamento - (acordoEntry ? acordoEntry.nao  : 0);
@@ -1645,7 +1646,13 @@ function renderGeral(){
     kpiHtml(gVal?'Carteira total':'Total clientes',M(t_),'',acordoEntry?`${gVal?fmtR$(acordoEntry.saldo||0):fmt(acordoEntry.total)} em acordo excluído${gVal?'':'s'}`:'') +
     kpiHtml('Acionados',M(a_),'blue',`${(t_>0?(a_/t_)*100:0).toFixed(1)}% da carteira`) +
     kpiHtml('Sem acionamento',M(n_),'red',`${(t_>0?(n_/t_)*100:0).toFixed(1)}% da carteira`) +
-    kpiHtml('Com promessa',fmt(ad.com_promessa),'green',`${((ad.com_promessa/Math.max(ef_acion,1))*100).toFixed(1)}% dos acionados`) +
+    kpiHtml('Com acordo',
+      acordoRow ? M(gVal ? (acordoRow.saldo||0) : acordoRow.total) : '—',
+      'green',
+      acordoRow && ad.total_clientes
+        ? `${(((gVal ? (acordoRow.saldo||0)/Math.max(somaSe('saldo',()=>true),1)
+                    : acordoRow.total/ad.total_clientes))*100).toFixed(1)}% da carteira`
+        : '') +
     kpiHtml('Acionamentos',fmt(ad.total_acionamentos),'',D.periodo);
 
   const pAcion = (ef_total>0?ef_acion/ef_total*100:0).toFixed(1);
