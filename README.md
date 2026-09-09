@@ -44,6 +44,7 @@ acionamentos-zon/
 │   ├── index.json                       # Lista acumulativa de meses disponíveis
 │   ├── collection_band_history.json     # Coortes do Collection Score (pendentes/resolvidas) — ver seção Collection Score
 │   ├── propensao_band_history.json      # Coortes da Propensão de Pagamento (pendentes/resolvidas) — mesma mecânica
+│   ├── efetividade_assessorias.json     # Ponte para o #KPI — acionamento por assessoria, 2,7 KB (ver abaixo)
 │   ├── 2026-07.json                     # Dados agregados — Julho 2026
 │   ├── 2026-07-analitico.json           # Dados individuais por cliente — Julho 2026
 │   ├── 2026-08.json
@@ -70,6 +71,7 @@ Na prática, o fluxo de uma atualização é:
    - `index.json` atualizado — acrescenta o mês novo à lista, mantendo os anteriores
    - `collection_band_history.json` atualizado — acrescenta/resolve coortes do Collection Score (ver seção abaixo)
    - `propensao_band_history.json` atualizado — mesma mecânica, coortes da Propensão de Pagamento
+   - `efetividade_assessorias.json` (~3 KB) — acionamento por assessoria na régua B–J. **Este arquivo é lido pelo `motor_zon.py`** e vira o bloco de efetividade do relatório para as assessorias no #KPI. É o espelho da ponte que já existia na direção contrária (o motor escreve o `carteira_serie.json` aqui). ⚠️ Por isso este script tem que rodar **antes** do motor na rodada do dia — se o arquivo for de outro mês, o motor descarta o bloco e avisa, em vez de misturar acionamento de um mês com recuperação de outro.
 3. Subir os arquivos manualmente em `data/` pela interface web do GitHub (**Add file → Upload files**) — GitHub Pages atualiza em ~1 minuto após o commit
 
 Este ciclo pode se repetir **mais de uma vez no mesmo mês** (ex: reexportar a carteira de agosto no meio do mês para refletir a carteira mais recente) — o `YYYY-MM.json` do mês é simplesmente sobrescrito a cada nova exportação; não há um "fechamento" único por mês.
@@ -226,7 +228,7 @@ Segue o padrão visual dos outros dashboards Z-ON: header navy (`#0F2461`), tab 
 
 ```bash
 python3 gerar_jsons_acionamentos.py   # gera os JSONs na pasta atual, a partir dos CSVs locais
-mkdir -p data && cp 2026-*.json index.json collection_band_history.json propensao_band_history.json data/
+mkdir -p data && cp 2026-*.json index.json collection_band_history.json propensao_band_history.json efetividade_assessorias.json data/
 python3 -m http.server 8000
 # acesse http://localhost:8000
 ```

@@ -1656,6 +1656,44 @@ with open(er_path, "w", encoding="utf-8") as f:
 print(f"  ✓ collection_band_history.json{' ':9} {er_path.stat().st_size / 1024:>6.0f} KB  "
       f"({len(er_hist['pendentes'])} pendente(s), {len(er_hist['resolvidos'])} lote(s) resolvido(s))")
 
+# ── Efetividade por assessoria — ponte para o #KPI (09/09/2026) ──────
+# O relatorio das assessorias do #KPI mostra recuperacao (que mora la) ao
+# lado de acionamento (que mora aqui). Em vez de o #KPI ler o YYYY-MM.json
+# inteiro -- 4 MB, com colaborador, score e todo o resto -- este bloco
+# enxuto sai separado: so o que aquele relatorio consome.
+#
+# E o espelho da ponte que ja existe na direcao contraria, onde o motor do
+# #KPI escreve carteira_serie.json aqui. Os dois pipelines seguem
+# independentes; o que atravessa e um arquivo pequeno e declarado.
+#
+# `atraso` vem na regua B..J (9 posicoes, mesma ordem do #KPI). Os baldes
+# "Acordo" e "Sem atraso" que existem no bloco original ficam de fora: la
+# eles nao tem faixa e o relatorio nao os usa.
+if by_assessoria:
+    efet = {"periodo": MES_ID,
+            "atualizado_em": mes_json.get("atualizado_em"),
+            "assessorias": {}}
+    for idx, ass in enumerate(as_list):
+        b = by_assessoria.get(str(idx))
+        if not b:
+            continue
+        efet["assessorias"][ass] = {
+            "total_clientes":     b["total_clientes"],
+            "acionados":          b["acionados"],
+            "sem_acionamento":    b["sem_acionamento"],
+            "com_promessa":       b["com_promessa"],
+            "total_acionamentos": b["total_acionamentos"],
+            "total_tel":          b["total_tel"],
+            "atraso": [{"total": t["total"], "acion": t["acion"], "pct": t["pct"]}
+                       for t in b["atraso"][:9]],
+        }
+    efet_path = SCRIPT_DIR / "efetividade_assessorias.json"
+    with open(efet_path, "w", encoding="utf-8") as f:
+        json.dump(efet, f, ensure_ascii=False, indent=1)
+    print(f"  ✓ efetividade_assessorias.json{' ':8} "
+          f"{efet_path.stat().st_size / 1024:>6.0f} KB  "
+          f"({len(efet['assessorias'])} assessoria(s)) → ponte p/ o #KPI")
+
 with open(erp_path, "w", encoding="utf-8") as f:
     json.dump(erp_hist, f, ensure_ascii=False, indent=2)
 print(f"  ✓ propensao_band_history.json{' ':10} {erp_path.stat().st_size / 1024:>6.0f} KB  "

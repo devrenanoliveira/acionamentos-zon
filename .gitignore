@@ -8,5 +8,6 @@ __pycache__/
 # antes de rodar, e sem elas ele regenera do zero e perde historico.
 /2026-*.json
 /index.json
+/efetividade_assessorias.json
 /collection_band_history.json
 /propensao_band_history.json
