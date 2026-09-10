@@ -1,14 +1,14 @@
 {
  "periodo": "2026-09",
- "atualizado_em": "09/09/2026 08:31",
+ "atualizado_em": "10/09/2026 08:35",
  "assessorias": {
   "Decisão Cobranças": {
-   "total_clientes": 2261,
-   "acionados": 2155,
-   "sem_acionamento": 106,
-   "com_promessa": 190,
-   "total_acionamentos": 10004,
-   "total_tel": 1730,
+   "total_clientes": 2277,
+   "acionados": 2194,
+   "sem_acionamento": 83,
+   "com_promessa": 202,
+   "total_acionamentos": 11718,
+   "total_tel": 2309,
    "atraso": [
     {
      "total": 0,
@@ -21,104 +21,104 @@
      "pct": 0.0
     },
     {
-     "total": 78,
-     "acion": 69,
-     "pct": 88.5
+     "total": 76,
+     "acion": 74,
+     "pct": 97.4
     },
     {
-     "total": 118,
-     "acion": 76,
-     "pct": 64.4
+     "total": 117,
+     "acion": 112,
+     "pct": 95.7
     },
     {
-     "total": 125,
-     "acion": 122,
-     "pct": 97.6
+     "total": 124,
+     "acion": 120,
+     "pct": 96.8
     },
     {
      "total": 127,
-     "acion": 124,
-     "pct": 97.6
+     "acion": 123,
+     "pct": 96.9
     },
     {
-     "total": 746,
-     "acion": 738,
+     "total": 741,
+     "acion": 732,
+     "pct": 98.8
+    },
+    {
+     "total": 922,
+     "acion": 912,
      "pct": 98.9
     },
     {
-     "total": 931,
-     "acion": 926,
-     "pct": 99.5
-    },
-    {
-     "total": 69,
-     "acion": 69,
-     "pct": 100.0
+     "total": 81,
+     "acion": 68,
+     "pct": 84.0
     }
    ]
   },
   "Fácil Soluções em Contact Center": {
-   "total_clientes": 61459,
-   "acionados": 59132,
-   "sem_acionamento": 2327,
-   "com_promessa": 178,
-   "total_acionamentos": 184272,
-   "total_tel": 6033,
+   "total_clientes": 62558,
+   "acionados": 58907,
+   "sem_acionamento": 3651,
+   "com_promessa": 232,
+   "total_acionamentos": 235518,
+   "total_tel": 6973,
    "atraso": [
     {
-     "total": 4676,
-     "acion": 4377,
-     "pct": 93.6
+     "total": 4555,
+     "acion": 2761,
+     "pct": 60.6
     },
     {
-     "total": 2837,
-     "acion": 2834,
+     "total": 4237,
+     "acion": 4235,
+     "pct": 100.0
+    },
+    {
+     "total": 1542,
+     "acion": 1540,
      "pct": 99.9
     },
     {
-     "total": 1557,
-     "acion": 1552,
-     "pct": 99.7
+     "total": 2179,
+     "acion": 2178,
+     "pct": 100.0
     },
     {
-     "total": 2210,
-     "acion": 2172,
-     "pct": 98.3
-    },
-    {
-     "total": 2479,
-     "acion": 2474,
-     "pct": 99.8
-    },
-    {
-     "total": 2327,
-     "acion": 2324,
+     "total": 2448,
+     "acion": 2445,
      "pct": 99.9
     },
     {
-     "total": 13347,
-     "acion": 13338,
+     "total": 2307,
+     "acion": 2306,
+     "pct": 100.0
+    },
+    {
+     "total": 13272,
+     "acion": 13265,
      "pct": 99.9
     },
     {
-     "total": 20503,
-     "acion": 20467,
-     "pct": 99.8
+     "total": 20424,
+     "acion": 20404,
+     "pct": 99.9
     },
     {
-     "total": 8534,
-     "acion": 8517,
+     "total": 8485,
+     "acion": 8472,
      "pct": 99.8
     }
    ]
   },
   "PG+": {
-   "total_clientes": 1758,
-   "acionados": 1616,
-   "sem_acionamento": 142,
+   "total_clientes": 1767,
+   "acionados": 1613,
+   "sem_acionamento": 154,
    "com_promessa": 0,
-   "total_acionamentos": 10401,
-   "total_tel": 8887,
+   "total_acionamentos": 11945,
+   "total_tel": 10429,
    "atraso": [
     {
      "total": 0,
@@ -151,19 +151,19 @@
      "pct": 0.0
     },
     {
-     "total": 740,
-     "acion": 686,
-     "pct": 92.7
+     "total": 737,
+     "acion": 682,
+     "pct": 92.5
     },
     {
-     "total": 931,
-     "acion": 862,
+     "total": 927,
+     "acion": 858,
      "pct": 92.6
     },
     {
-     "total": 68,
-     "acion": 62,
-     "pct": 91.2
+     "total": 80,
+     "acion": 63,
+     "pct": 78.8
     }
    ]
   }
