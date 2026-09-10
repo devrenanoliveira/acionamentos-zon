@@ -27,7 +27,21 @@ import pandas as pd
 MES_ID      = "2026-09"
 MES_LABEL   = "Setembro 2026"
 MES_PERIODO = "01–30 set/2026"
+
+# Assessoria que mudou de nome. O CSV do CobranSaaS ainda exporta o nome
+# antigo; aqui ele vira o nome novo antes de qualquer agrupamento, para que
+# os dois nunca apareçam como duas assessorias diferentes na mesma tela.
+# Em 10/09/2026 a **PG+ passou a se chamar Ciclo** (decisão do usuário).
+# Quando a origem for renomeada, a linha continua valendo sem efeito — e
+# pode sair. Vale para os dois CSVs (Carteira e Acionamentos).
+RENOMEAR_ASSESSORIA = {"PG+": "Ciclo"}
 # ================================================================
+
+
+def nome_assessoria(v):
+    """Nome de exibição da assessoria, já com renomeações aplicadas."""
+    s = str(v or "").strip()
+    return RENOMEAR_ASSESSORIA.get(s, s)
 
 SCRIPT_DIR = Path(__file__).parent
 BRT = timezone(timedelta(hours=-3))
@@ -320,7 +334,7 @@ cart["_ag"]     = cart[ag_c].astype(str).str.strip() if ag_c else ""
 cart["_dias"]   = pd.to_numeric(cart[dias_c], errors="coerce").fillna(0).astype(int) if dias_c else 0
 cart["_uf"]     = cart[uf_c].astype(str).str.strip().str.upper() if uf_c else ""
 cart["_cidade"] = cart[cid_c].astype(str).str.strip() if cid_c else ""
-cart["_as"]     = cart[ass_c].astype(str).str.strip() if ass_c else "—"
+cart["_as"]     = cart[ass_c].map(nome_assessoria) if ass_c else "—"
 cart["_situacao"] = cart[sit_c].astype(str).str.strip().str.lower() if sit_c else ""
 
 # Novas dimensões (20/08/2026)
@@ -562,7 +576,7 @@ print(f"  CPF:{cpf_a}  Ação:{acao_a}  Motivo:{motivo_a}  Data:{data_a}  Assess
 acion["_cpf"]    = acion[cpf_a].astype(str).str.strip() if cpf_a else ""
 acion["_acao"]   = acion[acao_a].astype(str).str.strip().str.upper() if acao_a else ""
 acion["_motivo"] = acion[motivo_a].astype(str).str.strip() if motivo_a else ""
-acion["_as"]     = acion[ass_a].astype(str).str.strip() if ass_a else "—"
+acion["_as"]     = acion[ass_a].map(nome_assessoria) if ass_a else "—"
 
 if data_a:
     acion["_data"] = pd.to_datetime(acion[data_a], errors="coerce", dayfirst=True)
@@ -1437,13 +1451,13 @@ bloco_global = calc_block(cart, acion_valid)
 #
 # IMPORTANTE: os acionamentos são filtrados pela coluna "Assessoria" do próprio
 # Acionamentos.csv (quem efetivamente FEZ o contato), não apenas pelo CPF do cliente.
-# Isso é proposital: quando um cliente migra de assessoria (ex: Fácil → PG+/Decisão),
+# Isso é proposital: quando um cliente migra de assessoria (ex: Fácil → Ciclo/Decisão),
 # o histórico de acionamento antigo dele continua tagueado com a assessoria que
 # REALMENTE fez aquele contato. Filtrar só por CPF creditaria à nova assessoria
-# (PG+/Decisão) o trabalho que a assessoria anterior (Fácil) já tinha feito antes
+# (Ciclo/Decisão) o trabalho que a assessoria anterior (Fácil) já tinha feito antes
 # da migração — testado e descartado em 11/08/2026 após comparação com os CSVs
-# brutos (PG+ tem só 61 linhas "PG+" no Acionamentos.csv; o resto do histórico dos
-# clientes hoje em PG+/Decisão pertence à Fácil).
+# brutos (Ciclo tem só 61 linhas "Ciclo" no Acionamentos.csv; o resto do histórico dos
+# clientes hoje em Ciclo/Decisão pertence à Fácil).
 by_assessoria: dict = {}
 if len(as_list) > 1:
     for idx, ass in enumerate(as_list):

@@ -1,6 +1,6 @@
 # Carteira de Cobrança | Acionamentos por Assessoria
 
-Dashboard de acompanhamento de cobertura de acionamentos da carteira Z-ON Card, com histórico mensal navegável, filtro por assessoria (Fácil Resultado, PG+, Decisão) e um modelo de priorização (Collection Score), publicado via GitHub Pages.
+Dashboard de acompanhamento de cobertura de acionamentos da carteira Z-ON Card, com histórico mensal navegável, filtro por assessoria (Fácil Resultado, Ciclo, Decisão) e um modelo de priorização (Collection Score), publicado via GitHub Pages.
 
 **URL:** https://devrenanoliveira.github.io/acionamentos-zon/
 
@@ -124,7 +124,7 @@ As faixas 9 e 10 nunca entram na soma de "Pré-Prejuízo (B–G)"/"Loss (H–J)"
 
 ## Atribuição por assessoria (`by_assessoria`)
 
-Quando há mais de uma assessoria na carteira (caso atual: Fácil, PG+, Decisão), o dashboard mostra um breakdown por assessoria. **Importante:** esse breakdown reflete **quem executou o contato** (coluna `Assessoria` do Acionamentos.csv) cruzado com quem está na carteira daquela assessoria **hoje** — não o CPF isolado.
+Quando há mais de uma assessoria na carteira (caso atual: Fácil, Ciclo, Decisão), o dashboard mostra um breakdown por assessoria. **Importante:** esse breakdown reflete **quem executou o contato** (coluna `Assessoria` do Acionamentos.csv) cruzado com quem está na carteira daquela assessoria **hoje** — não o CPF isolado.
 
 Isso significa que a soma dos blocos por assessoria não bate exatamente com o total global quando há clientes migrados de uma assessoria para outra no meio do período (o histórico de contato antigo continua marcado com quem fez o contato, não com o dono atual do cliente). É um comportamento esperado, não um bug — já foi tentado trocar essa lógica para filtro só por CPF e revertido, por inflar artificialmente a cobertura de assessorias que receberam clientes migrados.
 

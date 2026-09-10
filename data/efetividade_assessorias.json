@@ -1,7 +1,62 @@
 {
  "periodo": "2026-09",
- "atualizado_em": "10/09/2026 08:35",
+ "atualizado_em": "10/09/2026 09:27",
  "assessorias": {
+  "Ciclo": {
+   "total_clientes": 1767,
+   "acionados": 1613,
+   "sem_acionamento": 154,
+   "com_promessa": 0,
+   "total_acionamentos": 11945,
+   "total_tel": 10429,
+   "atraso": [
+    {
+     "total": 0,
+     "acion": 0,
+     "pct": 0.0
+    },
+    {
+     "total": 0,
+     "acion": 0,
+     "pct": 0.0
+    },
+    {
+     "total": 0,
+     "acion": 0,
+     "pct": 0.0
+    },
+    {
+     "total": 0,
+     "acion": 0,
+     "pct": 0.0
+    },
+    {
+     "total": 0,
+     "acion": 0,
+     "pct": 0.0
+    },
+    {
+     "total": 0,
+     "acion": 0,
+     "pct": 0.0
+    },
+    {
+     "total": 737,
+     "acion": 682,
+     "pct": 92.5
+    },
+    {
+     "total": 927,
+     "acion": 858,
+     "pct": 92.6
+    },
+    {
+     "total": 80,
+     "acion": 63,
+     "pct": 78.8
+    }
+   ]
+  },
   "Decisão Cobranças": {
    "total_clientes": 2277,
    "acionados": 2194,
@@ -109,61 +164,6 @@
      "total": 8485,
      "acion": 8472,
      "pct": 99.8
-    }
-   ]
-  },
-  "PG+": {
-   "total_clientes": 1767,
-   "acionados": 1613,
-   "sem_acionamento": 154,
-   "com_promessa": 0,
-   "total_acionamentos": 11945,
-   "total_tel": 10429,
-   "atraso": [
-    {
-     "total": 0,
-     "acion": 0,
-     "pct": 0.0
-    },
-    {
-     "total": 0,
-     "acion": 0,
-     "pct": 0.0
-    },
-    {
-     "total": 0,
-     "acion": 0,
-     "pct": 0.0
-    },
-    {
-     "total": 0,
-     "acion": 0,
-     "pct": 0.0
-    },
-    {
-     "total": 0,
-     "acion": 0,
-     "pct": 0.0
-    },
-    {
-     "total": 0,
-     "acion": 0,
-     "pct": 0.0
-    },
-    {
-     "total": 737,
-     "acion": 682,
-     "pct": 92.5
-    },
-    {
-     "total": 927,
-     "acion": 858,
-     "pct": 92.6
-    },
-    {
-     "total": 80,
-     "acion": 63,
-     "pct": 78.8
     }
    ]
   }
