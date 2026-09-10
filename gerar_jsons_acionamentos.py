@@ -801,11 +801,35 @@ def calc_block(df_c: pd.DataFrame, df_a: pd.DataFrame) -> dict:
         if cod and cod.strip() and cod.upper() != "NAN"
     ]
 
+    # ── Acordo: recorte para quem exclui acordos das métricas ────
+    # Mesmo balde da linha "Acordo" da régua de atraso (FA_ACORDO_IDX é
+    # mutuamente exclusivo com as 9 faixas), então quem subtrair este bloco
+    # do total cai exatamente na soma das 9 faixas + "Sem atraso".
+    #
+    # Vai junto a contagem de ACIONAMENTOS desses clientes, não só a de
+    # clientes: a tela desconta só clientes, e quem desconta o cliente sem
+    # descontar o acionamento dele infla "acionamentos por cliente acionado".
+    # `tel` conta só as linhas com data, igual ao `total_tel` acima, senão o
+    # mix de canal não fecha.
+    c_ac   = c[c["_fa"] == FA_ACORDO_IDX]
+    a_ac   = a[a["_cpf"].isin(set(c_ac["_cpf"]))]
+    a_ac_d = a_ac[a_ac["_data"].notna()] if "_data" in a_ac.columns else a_ac
+    acordo = {
+        "total":        len(c_ac),
+        "acion":        int(c_ac["_acionado"].sum()),
+        "nao":          int((~c_ac["_acionado"]).sum()),
+        "acionamentos": len(a_ac),
+        "tel":          int(a_ac_d["_is_tel"].sum()) if len(a_ac_d) else 0,
+        "com_promessa": int(c_ac["_ultimo"].astype(str).str.strip().str.lower()
+                            .str.contains("promessa", na=False).sum()),
+    }
+
     return {
         # KPIs globais
         "total_clientes":     n_total,
         "acionados":          n_acionado,
         "sem_acionamento":    n_nao,
+        "acordo":             acordo,
         "com_promessa":       n_pp,
         "total_acionamentos": n_total_a,
         "total_tel":          total_tel,
@@ -1698,6 +1722,13 @@ if by_assessoria:
             "com_promessa":       b["com_promessa"],
             "total_acionamentos": b["total_acionamentos"],
             "total_tel":          b["total_tel"],
+            # Recorte de acordo (10/09/2026): o relatorio do #KPI desconta
+            # acordos das metricas de cobertura, mesmo criterio da tela daqui
+            # com o toggle "Acordos" desligado. Sem este campo o relatorio
+            # mostrava 154 "sem acionamento" para a Ciclo onde o Analitico
+            # filtrado mostrava 141 -- os 13 eram clientes que fecharam acordo
+            # sem acionamento proprio da assessoria.
+            "acordo":             b.get("acordo"),
             "atraso": [{"total": t["total"], "acion": t["acion"], "pct": t["pct"]}
                        for t in b["atraso"][:9]],
         }

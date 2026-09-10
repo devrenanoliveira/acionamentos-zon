@@ -9,6 +9,14 @@
    "com_promessa": 0,
    "total_acionamentos": 11945,
    "total_tel": 10429,
+   "acordo": {
+    "total": 23,
+    "acion": 10,
+    "nao": 13,
+    "acionamentos": 46,
+    "tel": 37,
+    "com_promessa": 0
+   },
    "atraso": [
     {
      "total": 0,
@@ -64,6 +72,14 @@
    "com_promessa": 202,
    "total_acionamentos": 11718,
    "total_tel": 2309,
+   "acordo": {
+    "total": 89,
+    "acion": 53,
+    "nao": 36,
+    "acionamentos": 189,
+    "tel": 124,
+    "com_promessa": 48
+   },
    "atraso": [
     {
      "total": 0,
@@ -119,6 +135,14 @@
    "com_promessa": 232,
    "total_acionamentos": 235518,
    "total_tel": 6973,
+   "acordo": {
+    "total": 3095,
+    "acion": 1294,
+    "nao": 1801,
+    "acionamentos": 3672,
+    "tel": 274,
+    "com_promessa": 152
+   },
    "atraso": [
     {
      "total": 4555,
