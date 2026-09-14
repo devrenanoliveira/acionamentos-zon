@@ -1,20 +1,20 @@
 {
  "periodo": "2026-09",
- "atualizado_em": "11/09/2026 08:27",
+ "atualizado_em": "14/09/2026 08:28",
  "assessorias": {
   "Ciclo": {
-   "total_clientes": 1767,
-   "acionados": 1607,
-   "sem_acionamento": 160,
+   "total_clientes": 1791,
+   "acionados": 1629,
+   "sem_acionamento": 162,
    "com_promessa": 0,
-   "total_acionamentos": 13317,
-   "total_tel": 11813,
+   "total_acionamentos": 16216,
+   "total_tel": 14706,
    "acordo": {
-    "total": 24,
-    "acion": 11,
+    "total": 26,
+    "acion": 13,
     "nao": 13,
-    "acionamentos": 54,
-    "tel": 44,
+    "acionamentos": 74,
+    "tel": 60,
     "com_promessa": 0
    },
    "atraso": [
@@ -49,36 +49,36 @@
      "pct": 0.0
     },
     {
-     "total": 716,
-     "acion": 665,
-     "pct": 92.9
+     "total": 737,
+     "acion": 666,
+     "pct": 90.4
     },
     {
-     "total": 946,
-     "acion": 856,
-     "pct": 90.5
+     "total": 945,
+     "acion": 874,
+     "pct": 92.5
     },
     {
-     "total": 81,
-     "acion": 75,
-     "pct": 92.6
+     "total": 83,
+     "acion": 76,
+     "pct": 91.6
     }
    ]
   },
   "Decisão Cobranças": {
-   "total_clientes": 2285,
-   "acionados": 2205,
-   "sem_acionamento": 80,
-   "com_promessa": 221,
-   "total_acionamentos": 12055,
-   "total_tel": 2643,
+   "total_clientes": 2340,
+   "acionados": 2188,
+   "sem_acionamento": 152,
+   "com_promessa": 207,
+   "total_acionamentos": 17393,
+   "total_tel": 3048,
    "acordo": {
-    "total": 93,
-    "acion": 57,
-    "nao": 36,
-    "acionamentos": 206,
-    "tel": 135,
-    "com_promessa": 52
+    "total": 101,
+    "acion": 66,
+    "nao": 35,
+    "acionamentos": 266,
+    "tel": 169,
+    "com_promessa": 59
    },
    "atraso": [
     {
@@ -92,101 +92,101 @@
      "pct": 0.0
     },
     {
-     "total": 74,
-     "acion": 73,
-     "pct": 98.6
+     "total": 99,
+     "acion": 51,
+     "pct": 51.5
     },
     {
-     "total": 118,
-     "acion": 117,
-     "pct": 99.2
+     "total": 122,
+     "acion": 104,
+     "pct": 85.2
     },
     {
      "total": 125,
-     "acion": 123,
-     "pct": 98.4
+     "acion": 102,
+     "pct": 81.6
     },
     {
-     "total": 128,
-     "acion": 124,
-     "pct": 96.9
+     "total": 120,
+     "acion": 104,
+     "pct": 86.7
     },
     {
-     "total": 717,
-     "acion": 712,
-     "pct": 99.3
+     "total": 742,
+     "acion": 735,
+     "pct": 99.1
     },
     {
-     "total": 949,
-     "acion": 919,
-     "pct": 96.8
+     "total": 947,
+     "acion": 945,
+     "pct": 99.8
     },
     {
-     "total": 81,
-     "acion": 80,
-     "pct": 98.8
+     "total": 84,
+     "acion": 81,
+     "pct": 96.4
     }
    ]
   },
   "Fácil Soluções em Contact Center": {
-   "total_clientes": 61940,
-   "acionados": 59833,
-   "sem_acionamento": 2107,
-   "com_promessa": 255,
-   "total_acionamentos": 242989,
-   "total_tel": 7758,
+   "total_clientes": 61144,
+   "acionados": 59494,
+   "sem_acionamento": 1650,
+   "com_promessa": 333,
+   "total_acionamentos": 288597,
+   "total_tel": 8616,
    "acordo": {
-    "total": 3071,
-    "acion": 1343,
-    "nao": 1728,
-    "acionamentos": 4075,
-    "tel": 312,
-    "com_promessa": 179
+    "total": 3037,
+    "acion": 1513,
+    "nao": 1524,
+    "acionamentos": 4455,
+    "tel": 347,
+    "com_promessa": 200
    },
    "atraso": [
     {
-     "total": 4054,
-     "acion": 3769,
-     "pct": 93.0
+     "total": 3508,
+     "acion": 3471,
+     "pct": 98.9
     },
     {
-     "total": 4175,
-     "acion": 4173,
+     "total": 3138,
+     "acion": 3137,
      "pct": 100.0
     },
     {
-     "total": 1536,
-     "acion": 1533,
-     "pct": 99.8
-    },
-    {
-     "total": 2171,
-     "acion": 2169,
+     "total": 1997,
+     "acion": 1996,
      "pct": 99.9
     },
     {
-     "total": 2448,
-     "acion": 2445,
-     "pct": 99.9
+     "total": 2229,
+     "acion": 2206,
+     "pct": 99.0
     },
     {
-     "total": 2308,
-     "acion": 2306,
-     "pct": 99.9
+     "total": 2407,
+     "acion": 2389,
+     "pct": 99.3
     },
     {
-     "total": 12894,
-     "acion": 12887,
-     "pct": 99.9
+     "total": 2298,
+     "acion": 2275,
+     "pct": 99.0
     },
     {
-     "total": 20645,
-     "acion": 20587,
-     "pct": 99.7
+     "total": 13271,
+     "acion": 13268,
+     "pct": 100.0
     },
     {
-     "total": 8626,
-     "acion": 8609,
+     "total": 20638,
+     "acion": 20631,
+     "pct": 100.0
+    },
+    {
+     "total": 8615,
+     "acion": 8602,
      "pct": 99.8
     }
    ]
