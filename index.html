@@ -3065,18 +3065,24 @@ function renderCarteiraEvolucao(){
   const idDaAssessoria = nome => {
     const n = (nome||'').toLowerCase();
     if(n.indexOf('fácil')===0 || n.indexOf('facil')===0) return 'afr';
-    if(n.indexOf('pg')===0) return 'apm';
+    // PG+ virou Ciclo em 10/09/2026; meses anteriores ainda trazem "PG+".
+    if(n.indexOf('ciclo')===0 || n.indexOf('pg')===0) return 'apm';
     if(n.indexOf('decis')===0) return 'ad';
     return null;
   };
   const assNome = (typeof currentAs !== 'undefined' && currentAs !== null && D && D.assessoria_list)
     ? D.assessoria_list[currentAs] : null;
   const assId = assNome ? idDaAssessoria(assNome) : null;
+  // Assessoria selecionada que o casamento por nome não reconhece. Antes caía
+  // em `assId = null` e a sub-aba mostrava a carteira INTEIRA com o nome da
+  // assessoria no rótulo: a Ciclo apareceu com R$ 106 MM (real: R$ 3,19 MM)
+  // depois da renomeação de PG+ (14/09/2026). Agora a série some e a nota avisa.
+  const assSemId = !!assNome && !assId;
 
   // Fatia do ponto conforme a assessoria selecionada. Ponto antigo (gravado
   // antes de 03/09/2026) não tem `porAssessoria`; nesse caso a série some em
   // vez de mostrar zero, e a nota explica.
-  const fatia = p => assId ? ((p.porAssessoria||{})[assId] || null) : p;
+  const fatia = p => assNome ? (assId ? ((p.porAssessoria||{})[assId] || null) : null) : p;
   const semRecorte = assId && pts.some(p => !p.porAssessoria);
 
   const valor = p => {
@@ -3089,7 +3095,7 @@ function renderCarteiraEvolucao(){
   // A semente só existe agregada e em valor — não há semente por assessoria
   // nem por quantidade. Some quando não se aplica, em vez de comparar coisas
   // diferentes.
-  const temSemente = !assId && !ehQtd;
+  const temSemente = !assNome && !ehQtd;
   const semente = !temSemente ? null : (_evolFaixa==null
     ? (bloco.sementeValores||[]).reduce((s,v)=>s+v,0)
     : (bloco.sementeValores||[])[_evolFaixa]);
@@ -3122,8 +3128,8 @@ function renderCarteiraEvolucao(){
       <div class="kpi-val" style="color:${delta==null?'inherit':(delta>=0?'var(--green)':'var(--red)')}">${delta==null?'—':(delta>=0?'+':'')+fmtV(delta)}</div>
       <div class="kpi-sub">${_evolFaixa==null?'só entra dívida nova':'entradas + migrações'}</div></div>
     <div class="kpi"><div class="kpi-label">Entradas novas no mês</div>
-      <div class="kpi-val">${(!assId && !ehQtd && pts.length)?fmtR$(pts[pts.length-1].novasEntradasMes):'—'}</div>
-      <div class="kpi-sub">${(assId||ehQtd)?'só no agregado, em R$':'dívida que não existia no dia 1º'}</div></div>`;
+      <div class="kpi-val">${(!assNome && !ehQtd && pts.length)?fmtR$(pts[pts.length-1].novasEntradasMes):'—'}</div>
+      <div class="kpi-sub">${(assNome||ehQtd)?'só no agregado, em R$':'dívida que não existia no dia 1º'}</div></div>`;
 
   if(_evolChart){ _evolChart.destroy(); _evolChart = null; }
   const ctx = document.getElementById('chart-c-evol');
@@ -3164,7 +3170,7 @@ function renderCarteiraEvolucao(){
   // ver 108 MM numa aba e 104 MM aqui parece erro — e a pergunta voltou.
   let ponte = '';
   const ptUlt = pts.length ? pts[pts.length-1] : null;
-  if(ptUlt && !assId && !ehQtd && typeof D !== 'undefined' && D && D.atraso){
+  if(ptUlt && !assNome && !ehQtd && typeof D !== 'undefined' && D && D.atraso){
     const iAc = D.fa_acordo_idx, iSa = D.fa_sem_atraso_idx;
     const soma = (arr,pred) => arr.reduce((s,r,i)=> s + (pred(i) ? (r.saldo||0) : 0), 0);
     const totalTudo = soma(D.atraso, ()=>true);
@@ -3185,7 +3191,10 @@ function renderCarteiraEvolucao(){
       + '</table></div>';
   }
 
-  const notaAss = semRecorte
+  const notaAss = assSemId
+    ? '<br>⚠️ <strong>A série não reconhece a assessoria "' + assNome + '"</strong> — nenhum recorte foi '
+      + 'encontrado para esse nome, então nada é exibido em vez de mostrar a carteira inteira.'
+    : semRecorte
     ? '<br>⚠️ <strong>Alguns DUs deste mês não têm recorte por assessoria</strong> — o campo passou a ser '
       + 'gravado em 03/09/2026 e os dias anteriores foram preenchidos a partir da carteira de cada dia. '
       + 'Onde não houve como preencher, o ponto não aparece nesta série filtrada.'
