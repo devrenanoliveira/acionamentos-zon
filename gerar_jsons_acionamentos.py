@@ -1257,18 +1257,37 @@ else:
 print(f"    collection_band_history.json existente: {len(er_hist.get('pendentes', []))} pendente(s), "
       f"{len(er_hist.get('resolvidos', []))} lote(s) já resolvido(s)")
 
-# Registra a coorte deste mês (substitui se este MES_ID já tinha sido registrado antes)
-er_hist["pendentes"] = [p for p in er_hist.get("pendentes", []) if p.get("mes_ref") != MES_ID]
+# Coorte FECHADA (16/09/2026). Quem já está pendente neste MES_ID mantém a
+# data_ref e a banda do primeiro carimbo; só CPF novo entra com os de hoje.
+#
+# Antes cada rodada reescrevia TODOS os pendentes do mês com a data de hoje: o
+# cronômetro de 30 dias reiniciava diariamente e só parava na virada, então uma
+# única coorte por mês maturava, carimbada na última rodada daquele mês
+# (agosto/26 ficou com data_ref 2026-09-01 e só matura em 01/10). O comentário
+# do topo deste bloco sempre disse que a 1ª leitura sai ~30d depois da 1ª
+# rodada — era a intenção, não o comportamento.
+#
+# Congelar a data exige congelar a banda junto: medir a banda de hoje contra
+# uma janela aberta há 3 semanas seria vazamento. E ninguém sai da coorte antes
+# de maturar — quem paga some da carteira, e remontar a lista a partir da
+# carteira de hoje tiraria da conta justamente quem converteu.
 hoje_iso = HOJE_DT.strftime("%Y-%m-%d") if "HOJE_DT" in globals() else datetime.now(BRT).strftime("%Y-%m-%d")
+_coorte = {p["cpf"]: p for p in er_hist.get("pendentes", []) if p.get("mes_ref") == MES_ID}
+_n_carimbados = len(_coorte)
+er_hist["pendentes"] = [p for p in er_hist.get("pendentes", []) if p.get("mes_ref") != MES_ID]
 for _, _rr in cart[["_cpf_norm", "_collband"]].iterrows():
-    if not _rr["_cpf_norm"]:
+    _cpf = _rr["_cpf_norm"]
+    if not _cpf or _cpf in _coorte:
         continue
-    er_hist["pendentes"].append({
-        "cpf": _rr["_cpf_norm"],
+    _coorte[_cpf] = {
+        "cpf": _cpf,
         "mes_ref": MES_ID,
         "data_ref": hoje_iso,
         "banda": int(_rr["_collband"]),
-    })
+    }
+er_hist["pendentes"].extend(_coorte.values())
+print(f"    coorte {MES_ID}: {_n_carimbados:,} carimbo(s) preservado(s) + "
+      f"{len(_coorte) - _n_carimbados:,} novo(s) em {hoje_iso}")
 
 _hoje_dt_check = datetime.strptime(hoje_iso, "%Y-%m-%d")
 _pag_disponivel = "pag" in globals() and isinstance(pag, pd.DataFrame) and len(pag) > 0
@@ -1397,16 +1416,28 @@ if not _pag_disponivel and _pendentes_mes_atual_antes:
         f"Nenhum JSON foi gerado."
     )
 
+# Coorte fechada, mesma regra do Collection Score acima (16/09/2026): quem já
+# está pendente neste MES_ID mantém data_ref e banda do primeiro carimbo, e
+# ninguém é removido da coorte antes de maturar. Note que, com isso, a trava
+# acima deixa de ter um estrago a impedir — sem os CSVs de histórico ninguém
+# tem banda válida, ninguém entra, e a lista existente sobrevive. Ela fica
+# porque abortar continua sendo o certo: sem `pag` nada matura mesmo.
+_coorte_p = {p["cpf"]: p for p in erp_hist.get("pendentes", []) if p.get("mes_ref") == MES_ID}
+_n_carimbados_p = len(_coorte_p)
 erp_hist["pendentes"] = [p for p in erp_hist.get("pendentes", []) if p.get("mes_ref") != MES_ID]
 for _, _rrp in cart[["_cpf_norm", "_propband"]].iterrows():
-    if not _rrp["_cpf_norm"] or _rrp["_propband"] == -1:
+    _cpfp = _rrp["_cpf_norm"]
+    if not _cpfp or _rrp["_propband"] == -1 or _cpfp in _coorte_p:
         continue
-    erp_hist["pendentes"].append({
-        "cpf": _rrp["_cpf_norm"],
+    _coorte_p[_cpfp] = {
+        "cpf": _cpfp,
         "mes_ref": MES_ID,
         "data_ref": hoje_iso,
         "banda": int(_rrp["_propband"]),
-    })
+    }
+erp_hist["pendentes"].extend(_coorte_p.values())
+print(f"    coorte {MES_ID}: {_n_carimbados_p:,} carimbo(s) preservado(s) + "
+      f"{len(_coorte_p) - _n_carimbados_p:,} novo(s) em {hoje_iso}")
 
 _pendentes_restantes_p = []
 _resolvidos_novos_p = defaultdict(lambda: {"n_coorte": 0, "n_acordo": 0, "n_pagou": 0})

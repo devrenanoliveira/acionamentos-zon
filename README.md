@@ -156,6 +156,8 @@ O segundo modelo (25/08/2026) fecha uma lacuna: antes só o Collection Score tin
 
 ⚠️ **Os dois arquivos `*_band_history.json` precisam ser baixados do GitHub antes de cada rodada e resubidos depois**, com a mesma lógica do `index.json` — sem isso, o rastreamento de coortes pendentes de maturação é perdido. O primeiro dado real de "Realizado" só existe depois que uma coorte completa os 30 dias corridos desde sua criação (mesmo prazo para os dois modelos).
 
+**A coorte é fechada** (16/09/2026): o CPF é carimbado com a data e a banda do dia em que entrou no mês, e nenhuma rodada posterior o recarimba — nem quando a banda dele muda, nem quando ele sai da carteira (quem paga sai, e removê-lo tiraria da conta justamente quem converteu). Antes disso cada rodada reescrevia a data de todo mundo, o relógio de 30 dias reiniciava diariamente e só uma coorte por mês maturava. Primeiras leituras reais: **01/10/2026** (coorte de agosto) e **16/10/2026** (setembro).
+
 ---
 
 ## Colaboradores (marcação opcional, cruzamento com RH)
