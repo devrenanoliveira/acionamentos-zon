@@ -183,12 +183,18 @@ def calcular(cart, col_tel, col_email, col_end, col_cep, fa_labels, fv_labels, r
             ke = _key_end(end_v[i], cep_v[i])
             if ke:
                 ks_a.add(ke)
+        # A chave entra como 2º critério de propósito. `ks_t/ks_e/ks_a` são
+        # SETS de string: quem empata em contagem sairia na ordem de iteração
+        # do set, e o hash de string é aleatorizado por processo — rodar o
+        # mesmo CSV duas vezes trocava o contato exibido de 17 clusters, sem
+        # mudar dado nem código (visto em 15/09 e de novo em 17/09/2026).
+        # Com o desempate a ordem é total e a saída vira reproduzível.
         ct = sorted((k for k in ks_t if len(idx_tel.get(k, [])) > 1),
-                    key=lambda k: -len(idx_tel[k]))
+                    key=lambda k: (-len(idx_tel[k]), k))
         ce = sorted((k for k in ks_e if len(idx_mail.get(k, [])) > 1),
-                    key=lambda k: -len(idx_mail[k]))
+                    key=lambda k: (-len(idx_mail[k]), k))
         ca = sorted((k for k in ks_a if len(idx_end.get(k, [])) > 1),
-                    key=lambda k: -len(idx_end[k]))
+                    key=lambda k: (-len(idx_end[k]), k))
         tipos = "".join(x for x, c in (("T", ct), ("E", ce), ("A", ca)) if c)
         cs = sorted(set(cidades[i] for i in ms))
         clusters.append({
@@ -205,7 +211,10 @@ def calcular(cart, col_tel, col_email, col_end, col_cep, fa_labels, fv_labels, r
             "telefone": (f"{ct[0]} ({len(idx_tel[ct[0]])})" if ct else ""),
             "prio": round(len(ms) * (1 + 0.5 * (len(tipos) - 1)), 1),
         })
-    clusters.sort(key=lambda c: (-c["prio"], -c["saldo"]))
+    # `id` fecha a ordem: sem ele, cluster que empata em prio e saldo sai na
+    # ordem de `membros`, que é dado por dict e hoje é estável — mas ordem
+    # total custa nada e não depende de continuar sendo.
+    clusters.sort(key=lambda c: (-c["prio"], -c["saldo"], c["id"]))
 
     # ---- e-mails a revisar / placeholders filtrados ----
     # `so_email` é o número que decide se um e-mail muito repetido é cadastro de
@@ -231,10 +240,10 @@ def calcular(cart, col_tel, col_email, col_end, col_cep, fa_labels, fv_labels, r
                 "so_email": sum(1 for i in afet if sig[i] == {"E"}),
                 "com_outro_sinal": sum(1 for i in afet if len(sig[i]) > 1),
             })
-    revisar.sort(key=lambda x: -x["cpfs"])
+    revisar.sort(key=lambda x: (-x["cpfs"], x["email"]))
 
     filtrados = sorted(({"email": k, "cpfs": len(v)} for k, v in placeholders.items()),
-                       key=lambda x: -x["cpfs"])[:20]
+                       key=lambda x: (-x["cpfs"], x["email"]))[:20]
 
     # quanto do resultado depende de e-mail ainda não validado
     dep = set()
