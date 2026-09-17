@@ -146,7 +146,11 @@ Lista de clientes priorizados por um modelo de regressão logística treinado a 
 
 ### Propensão de Pagamento (30 dias)
 
-Modelo separado (não substitui o Collection Score, roda em paralelo), baseado em **histórico real de pagamento** — não em status de carteira. Precisa de um ou mais arquivos `Recuperação AAAA.csv` (histórico multi-ano de pagamentos por CPF) na mesma pasta do script; sem eles, essa métrica simplesmente não aparece (ausência por falta de arquivo, não por período de espera). Gera um score e banda A–D próprios, exibidos lado a lado com o Collection Score, incluindo um card cruzando quem é banda A nos dois modelos ao mesmo tempo.
+Modelo separado (não substitui o Collection Score, roda em paralelo), baseado em **histórico real de pagamento** — não em status de carteira. Gera um score e banda A–D próprios, exibidos lado a lado com o Collection Score, incluindo um card cruzando quem é banda A nos dois modelos ao mesmo tempo.
+
+**De onde vem o histórico (desde 17/09/2026).** Não é mais "o arquivo que estiver na pasta". A cada rodada o script **monta** o histórico, tomando cada **mês de liquidação** da fonte que o cobre mais completamente, entre os `Recuperação AAAA.csv` da pasta (que seguem obrigatórios — são a única fonte de tudo anterior a agosto/2026) e o CSV de **Comissões** arquivado em cada pasta-dia, identificado pelo cabeçalho. Como a escolha é por mês e por completude, um recorte curto nunca vence o mês de quem tem mais dele, e o mês corrente fica tão fresco quanto a rodada. Se a montagem entregar menos linhas ou menos dinheiro do que os arquivos anuais sozinhos entregariam em qualquer mês, o script **aborta** em vez de treinar com histórico encolhido — é a falha que não se denuncia sozinha. Sem nenhuma fonte, a métrica não aparece, e isso não bloqueia a geração dos outros JSONs.
+
+> Por que mudou: o arquivo anual ficou parado em 20/08 por três semanas sem ninguém notar, e em 17/09 um export nomeado como anual continha só duas semanas. Nos dois casos o script rodaria e publicaria sem erro — o dado é que ficava menor.
 
 ### Esperado x Realizado (sub-aba 📊)
 
@@ -246,7 +250,9 @@ python3 -m http.server 8000
 | Script encerra com erro | Falta `Carteira.csv` ou `Acionamentos.csv` na pasta | Os dois são obrigatórios — confirmar que ambos estão na mesma pasta do script |
 | Filtro de assessoria não aparece | Só uma assessoria nos dados daquele mês | Normal — aparece automaticamente com 2+ assessorias |
 | Números de `by_assessoria` não batem com o total global | Clientes migraram de assessoria no meio do período | Comportamento esperado — ver seção "Atribuição por assessoria" acima |
-| `propensao_meta` ausente no JSON | `Recuperação AAAA.csv` (histórico multi-ano) não estava na pasta do script naquela rodada | Copiar os arquivos `Recuperação AAAA.csv` para a pasta antes de rodar — não é um período de espera, é ausência de arquivo |
+| `propensao_meta` ausente no JSON | Nenhuma fonte de histórico de pagamento: nem `*recupera*.csv` na pasta do script, nem CSV de Comissões nas pastas-dia | Copiar os `Recuperação AAAA.csv` para a pasta antes de rodar — não é um período de espera, é ausência de arquivo |
+| Rodada aborta com "histórico de pagamento regrediu em AAAA-MM" | A trava de 17/09/2026 mordeu: alguma fonte está truncada e a montagem ficaria menor do que os arquivos anuais já entregavam naquele mês | Ver qual fonte o log aponta. Quase sempre é um `*recupera*.csv` novo na pasta que cobre menos do que o antigo — conferir o período real do arquivo, não o nome |
+| Coorte do Esperado x Realizado recarimbada na data de hoje, "0 pendente(s)" no log | `collection_band_history.json` / `propensao_band_history.json` foram apagados da **raiz** do repo (o script lê da raiz, não de `data/`) | Restaurar os dois de `data/` para a raiz e rodar de novo. A limpeza pós-rodada apaga CSV e xlsx, **nunca** esses dois JSON |
 | Sub-aba "Esperado x Realizado" mostra tudo "aguardando maturação" (em qualquer um dos dois toggles) | Nenhuma coorte do modelo (Collection Score ou Propensão) ainda completou 30 dias desde que a banda foi atribuída | Esperado — o "Realizado" só popula depois de ~30 dias corridos da primeira rodada em que a coorte apareceu |
 | Sub-aba "🏢 Colaboradores" não aparece | Nenhum `.csv` de Colaboradores em `Atualização de dados/Colaboradores/` **e** nenhuma planilha `.xlsx` de RH na pasta do script | Opcional — checar os dois caminhos (ver seção "Colaboradores" acima); se só o `.xlsx` estiver ausente, não é problema, o nativo já cobre |
 | `SyntaxError: Failed to execute 'close'...` no preview do Claude | Sem os JSONs locais em `data/`, o fetch cai num 404 | Funciona normalmente publicado no GitHub Pages |

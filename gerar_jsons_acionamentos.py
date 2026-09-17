@@ -1063,33 +1063,125 @@ except ImportError:
 #  RODA EM PARALELO ao Collection Score — não o substitui (decisão do
 #  usuário, 21/08/2026).
 # ================================================================
+# ----------------------------------------------------------------
+#  De onde sai o histórico de pagamento (17/09/2026)
+#  ----------------------------------------------------------------
+#  Antes: o script lia qualquer "*recupera*.csv" solto nesta pasta e confiava
+#  nele. Dois jeitos de errar em silêncio, os dois já acontecidos de verdade:
+#    • o arquivo envelhecer sem ninguém notar — ficou parado em 20/08 por três
+#      semanas, com o modelo treinando em histórico velho e nenhum alerta;
+#    • alguém trocá-lo por um recorte de um mês só com nome de arquivo anual —
+#      em 17/09 o "Recuperação 2026 - até dia 16-09-26.csv" tinha apenas
+#      01/09 a 16/09, e teria custado oito meses de RFM sem levantar exceção.
+#
+#  Agora o histórico é MONTADO a cada rodada: cada mês de liquidação vem da
+#  fonte que o cobre mais completamente, entre os arquivos anuais desta pasta
+#  e os CSVs de Comissões arquivados em cada pasta-dia. Como a escolha é por
+#  mês e por completude, um recorte curto nunca vence o mês de quem tem mais
+#  dele — o segundo erro deixa de ser possível, em vez de depender de alguém
+#  conferir o nome do arquivo. E o mês corrente fica tão fresco quanto a
+#  rodada, que é o que o primeiro erro custou.
+#
+#  Conferido em 17/09/2026 contra o export manual em uso (01/01 a 15/09):
+#  151.938 linhas e R$ 54.762.720,52 nos dois, diferença de R$ 0,00 nos nove
+#  meses.
+# ----------------------------------------------------------------
+PAG_DIR    = SCRIPT_DIR.parent / "Atualização de dados"
+PAG_MARCAS = ("recebido", "liquida", "contrato", "parcela")
+
+
+def _eh_comissoes(path):
+    """Comissões pelo CABEÇALHO, nunca pelo nome — o CobranSaaS exporta todos
+    os relatórios como RELATORIO_<id>.csv. As quatro marcas juntas não
+    aparecem em Carteira, Acionamentos nem em nenhum dos dois de Acordos."""
+    try:
+        with open(path, encoding="latin-1") as f:
+            cab = _norm(f.readline())
+    except OSError:
+        return False
+    return all(m in cab for m in PAG_MARCAS)
+
+
+def _fontes_pagamento():
+    """Os arquivos anuais desta pasta + o Comissões de cada pasta-dia."""
+    fontes = [(f"anual/{p.name}", p) for p in sorted(SCRIPT_DIR.glob("*.csv"))
+              if "recupera" in p.name.lower()]
+    if PAG_DIR.is_dir():
+        for pasta in sorted(PAG_DIR.glob("*/*/*")):
+            if not pasta.is_dir():
+                continue
+            for c in sorted(pasta.glob("*.csv")):
+                if _eh_comissoes(c):
+                    fontes.append((f"{pasta.parent.name}/{pasta.name}", c))
+                    break
+    return fontes
+
+
 print("  Calculando Propensão de Pagamento (30d)...")
 prop_meta = None
 cart["_propscore"] = 0.0
 cart["_propband"]  = -1   # -1 = sem histórico de pagamento (não escorável)
 
-recup_paths = [p for p in sorted(SCRIPT_DIR.glob("*.csv")) if "recupera" in p.name.lower()]
-if recup_paths:
+recup_fontes = _fontes_pagamento()
+if recup_fontes:
     try:
         from sklearn.ensemble import HistGradientBoostingClassifier
         from sklearn.metrics import roc_auc_score
 
         PROP_COLS = ["Cliente","Tipo","Contrato","Parcela","Assessoria","Data","Valor","Pct",
                      "Liquidacao","Recebido","Dias","Vencimento","CPF"]
-        _pag_dfs = []
-        for p in recup_paths:
-            _d = pd.read_csv(p, encoding="latin-1", sep=None, engine="python")
-            if _d.shape[1] >= len(PROP_COLS):
-                _d = _d.iloc[:, :len(PROP_COLS)]
-                _d.columns = PROP_COLS
-                _pag_dfs.append(_d)
-            else:
-                print(f"    ⚠ {p.name} não tem o formato esperado ({len(PROP_COLS)} colunas) — ignorado")
 
-        if not _pag_dfs:
+        def _ler_pag(path):
+            _d = pd.read_csv(path, encoding="latin-1", sep=None, engine="python")
+            if _d.shape[1] < len(PROP_COLS):
+                return None
+            _d = _d.iloc[:, :len(PROP_COLS)].copy()
+            _d.columns = PROP_COLS
+            _d["_liq_dt"]  = pd.to_datetime(_d["Liquidacao"], format="%d/%m/%Y", errors="coerce")
+            _d["_receb_n"] = _d["Recebido"].apply(safe_float)
+            return _d[_d["_liq_dt"].notna()]
+
+        # Cada mês de liquidação vem da fonte que o cobre mais completamente.
+        # `_base_mes` guarda o que os arquivos anuais sozinhos entregariam —
+        # é a régua da trava logo abaixo.
+        _escolha, _base_mes = {}, {}
+        for _rotulo, _p in recup_fontes:
+            _d = _ler_pag(_p)
+            if _d is None:
+                print(f"    ⚠ {_p.name} não tem o formato esperado "
+                      f"({len(PROP_COLS)} colunas) — ignorado")
+                continue
+            for _per, _bloco in _d.groupby(_d["_liq_dt"].dt.to_period("M")):
+                if _rotulo.startswith("anual/"):
+                    _n0, _v0 = _base_mes.get(_per, (0, 0.0))
+                    _base_mes[_per] = (max(_n0, len(_bloco)),
+                                       max(_v0, float(_bloco["_receb_n"].sum())))
+                if _per not in _escolha or len(_bloco) > _escolha[_per][0]:
+                    _escolha[_per] = (len(_bloco), _rotulo, _bloco)
+
+        if not _escolha:
             raise ValueError("nenhum arquivo de Recuperação com formato reconhecido")
 
-        pag = pd.concat(_pag_dfs, ignore_index=True)
+        # Trava: a montagem não pode entregar menos do que o arquivo anual já
+        # entregava em nenhum mês. Se entregar, alguma fonte está truncada —
+        # melhor abortar do que treinar o modelo com histórico encolhido, que
+        # é a falha que não levanta exceção nenhuma por conta própria.
+        for _per, (_n, _v) in sorted(_base_mes.items()):
+            _gn, _grot, _gb = _escolha[_per]
+            _gv = float(_gb["_receb_n"].sum())
+            if _gn < _n or _gv < _v - 0.01:
+                raise ValueError(
+                    f"histórico de pagamento regrediu em {_per}: a fonte "
+                    f"'{_grot}' traz {_gn:,} pagto(s) / R$ {_gv:,.2f} contra "
+                    f"{_n:,} / R$ {_v:,.2f} dos arquivos anuais")
+
+        print("    histórico montado por mês de liquidação:")
+        for _per in sorted(_escolha):
+            _n, _rot, _b = _escolha[_per]
+            print(f"      {_per}  {_n:>7,} pagto(s)  "
+                  f"R$ {_b['_receb_n'].sum():>13,.2f}  ← {_rot}")
+
+        pag = pd.concat([_escolha[k][2] for k in sorted(_escolha)], ignore_index=True)
         pag["_cpf_norm"] = pag["CPF"].apply(norm_cpf)
         pag["_receb_n"]  = pag["Recebido"].apply(safe_float)
         pag["_liq_dt"]   = pd.to_datetime(pag["Liquidacao"], format="%d/%m/%Y", errors="coerce")
@@ -1194,8 +1286,9 @@ if recup_paths:
     except Exception as e:
         print(f"    ⚠ Falha ao calcular Propensão de Pagamento ({e}) — marcação fica zerada")
 else:
-    print("  (nenhum arquivo 'Recuperação AAAA.csv' encontrado na pasta — nome precisa conter "
-          "\"recupera\"; Propensão de Pagamento não calculada, não bloqueia a geração dos outros JSONs)")
+    print(f"  (nenhuma fonte de histórico de pagamento: nem '*recupera*.csv' nesta pasta, "
+          f"nem CSV de Comissões em {PAG_DIR}; Propensão de Pagamento não "
+          f"calculada, não bloqueia a geração dos outros JSONs)")
 
 # ================================================================
 #  Esperado x Realizado — Collection Score (novo em 24/08/2026)
